@@ -270,40 +270,56 @@ export default function CandyCrush() {
     setGrid(prev => {
       const newGrid = [...prev];
       
-      // Mover caramelos hacia abajo (de abajo hacia arriba)
-      for (let i = 55; i >= 0; i--) {
-        if (newGrid[i + WIDTH]?.color === '' && newGrid[i]?.color !== '') {
-          newGrid[i + WIDTH].color = newGrid[i].color;
-          newGrid[i].color = '';
-          newGrid[i + WIDTH].animationClass = 'anim-drop';
-          
-          setTimeout(() => {
-            setGrid(current => {
-              const updated = [...current];
-              if (updated[i + WIDTH]) {
-                updated[i + WIDTH].animationClass = '';
-              }
-              return updated;
-            });
-          }, 700);
+      // Para cada columna, mover caramelos hacia abajo
+      for (let col = 0; col < WIDTH; col++) {
+        // Recolectar todos los colores no vacíos de esta columna (de abajo hacia arriba)
+        const colors: string[] = [];
+        for (let row = WIDTH - 1; row >= 0; row--) {
+          const index = row * WIDTH + col;
+          if (newGrid[index]?.color !== '') {
+            colors.push(newGrid[index].color);
+          }
         }
-      }
-      
-      // Llenar primera fila con nuevos caramelos
-      for (let i = 0; i < WIDTH; i++) {
-        if (newGrid[i]?.color === '') {
-          newGrid[i].color = CANDY_COLORS[Math.floor(Math.random() * CANDY_COLORS.length)];
-          newGrid[i].animationClass = 'anim-appear';
+        
+        // Llenar desde abajo con los colores existentes
+        for (let row = WIDTH - 1; row >= 0; row--) {
+          const index = row * WIDTH + col;
+          const colorIndex = (WIDTH - 1 - row);
           
-          setTimeout(() => {
-            setGrid(current => {
-              const updated = [...current];
-              if (updated[i]) {
-                updated[i].animationClass = '';
-              }
-              return updated;
-            });
-          }, 500);
+          if (colorIndex < colors.length) {
+            // Hay un caramelo para esta posición
+            if (newGrid[index].color !== colors[colorIndex]) {
+              newGrid[index].color = colors[colorIndex];
+              newGrid[index].animationClass = 'anim-drop';
+              
+              // Limpiar animación después
+              setTimeout(() => {
+                setGrid(current => {
+                  const updated = [...current];
+                  if (updated[index]) {
+                    updated[index].animationClass = '';
+                  }
+                  return updated;
+                });
+              }, 700);
+            }
+          } else {
+            // Generar nuevo caramelo aleatorio
+            const newColor = CANDY_COLORS[Math.floor(Math.random() * CANDY_COLORS.length)];
+            newGrid[index].color = newColor;
+            newGrid[index].animationClass = 'anim-appear';
+            
+            // Limpiar animación después
+            setTimeout(() => {
+              setGrid(current => {
+                const updated = [...current];
+                if (updated[index]) {
+                  updated[index].animationClass = '';
+                }
+                return updated;
+              });
+            }, 500);
+          }
         }
       }
       
