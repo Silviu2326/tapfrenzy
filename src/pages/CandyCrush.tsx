@@ -176,53 +176,58 @@ export default function CandyCrush() {
   const moveIntoSquareBelow = () => {
     setGrid(prev => {
       const newGrid = [...prev];
+      let hasChanges = false;
       
+      // Para cada columna
       for (let col = 0; col < WIDTH; col++) {
-        // Recoger colores no vacíos de abajo hacia arriba
-        const existingColors: string[] = [];
-        for (let row = WIDTH - 1; row >= 0; row--) {
+        // Empezar desde la segunda fila desde abajo y subir
+        for (let row = WIDTH - 2; row >= 0; row--) {
           const index = row * WIDTH + col;
+          
+          // Si esta celda tiene una botella
           if (newGrid[index].color !== '') {
-            existingColors.push(newGrid[index].color);
+            // Buscar la primera celda vacía debajo
+            let targetRow = row + 1;
+            while (targetRow < WIDTH && newGrid[targetRow * WIDTH + col].color !== '') {
+              targetRow++;
+            }
+            
+            // Si hay una celda vacía debajo, mover la botella
+            if (targetRow < WIDTH) {
+              const targetIndex = targetRow * WIDTH + col;
+              newGrid[targetIndex].color = newGrid[index].color;
+              newGrid[targetIndex].animationClass = 'anim-drop';
+              newGrid[index].color = '';
+              hasChanges = true;
+            }
           }
         }
         
-        // Vaciar toda la columna primero
+        // Llenar las celdas vacías de la parte superior con nuevas botellas
         for (let row = 0; row < WIDTH; row++) {
           const index = row * WIDTH + col;
-          newGrid[index].color = '';
-        }
-        
-        // Llenar desde abajo con los colores existentes
-        for (let i = 0; i < existingColors.length; i++) {
-          const row = WIDTH - 1 - i;
-          const index = row * WIDTH + col;
-          newGrid[index].color = existingColors[i];
-          newGrid[index].animationClass = 'anim-drop';
-        }
-        
-        // Llenar el resto desde arriba con nuevos caramelos
-        const newCandiesCount = WIDTH - existingColors.length;
-        for (let i = 0; i < newCandiesCount; i++) {
-          const row = i;
-          const index = row * WIDTH + col;
-          newGrid[index].color = CANDY_COLORS[Math.floor(Math.random() * CANDY_COLORS.length)];
-          newGrid[index].animationClass = 'anim-appear';
+          if (newGrid[index].color === '') {
+            newGrid[index].color = CANDY_COLORS[Math.floor(Math.random() * CANDY_COLORS.length)];
+            newGrid[index].animationClass = 'anim-appear';
+            hasChanges = true;
+          }
         }
       }
       
-      // Limpiar animaciones después
-      setTimeout(() => {
-        setGrid(current => {
-          const updated = [...current];
-          for (let i = 0; i < WIDTH * WIDTH; i++) {
-            if (updated[i]) {
-              updated[i].animationClass = '';
+      // Solo limpiar animaciones si hubo cambios
+      if (hasChanges) {
+        setTimeout(() => {
+          setGrid(current => {
+            const updated = [...current];
+            for (let i = 0; i < WIDTH * WIDTH; i++) {
+              if (updated[i]) {
+                updated[i].animationClass = '';
+              }
             }
-          }
-          return updated;
-        });
-      }, 500);
+            return updated;
+          });
+        }, 500);
+      }
       
       return newGrid;
     });
