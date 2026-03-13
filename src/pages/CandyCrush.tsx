@@ -270,27 +270,46 @@ export default function CandyCrush() {
     setGrid(prev => {
       const newGrid = [...prev];
       
-      // Para cada columna, mover caramelos hacia abajo
+      // Para cada columna
       for (let col = 0; col < WIDTH; col++) {
-        // Recolectar todos los colores no vacíos de esta columna (de abajo hacia arriba)
-        const colors: string[] = [];
+        // Empezar desde abajo y subir
         for (let row = WIDTH - 1; row >= 0; row--) {
           const index = row * WIDTH + col;
-          if (newGrid[index]?.color !== '') {
-            colors.push(newGrid[index].color);
-          }
-        }
-        
-        // Llenar desde abajo con los colores existentes
-        for (let row = WIDTH - 1; row >= 0; row--) {
-          const index = row * WIDTH + col;
-          const colorIndex = (WIDTH - 1 - row);
           
-          if (colorIndex < colors.length) {
-            // Hay un caramelo para esta posición
-            if (newGrid[index].color !== colors[colorIndex]) {
-              newGrid[index].color = colors[colorIndex];
-              newGrid[index].animationClass = 'anim-drop';
+          // Si esta celda está vacía
+          if (newGrid[index].color === '') {
+            // Buscar el primer caramelo no vacío arriba
+            let foundCandy = false;
+            for (let searchRow = row - 1; searchRow >= 0; searchRow--) {
+              const searchIndex = searchRow * WIDTH + col;
+              
+              if (newGrid[searchIndex].color !== '') {
+                // Mover este caramelo hacia abajo
+                newGrid[index].color = newGrid[searchIndex].color;
+                newGrid[index].animationClass = 'anim-drop';
+                newGrid[searchIndex].color = '';
+                foundCandy = true;
+                
+                // Limpiar animación después
+                setTimeout(() => {
+                  setGrid(current => {
+                    const updated = [...current];
+                    if (updated[index]) {
+                      updated[index].animationClass = '';
+                    }
+                    return updated;
+                  });
+                }, 700);
+                
+                break;
+              }
+            }
+            
+            // Si no encontramos caramelo arriba, generar uno nuevo
+            if (!foundCandy) {
+              const newColor = CANDY_COLORS[Math.floor(Math.random() * CANDY_COLORS.length)];
+              newGrid[index].color = newColor;
+              newGrid[index].animationClass = 'anim-appear';
               
               // Limpiar animación después
               setTimeout(() => {
@@ -301,24 +320,8 @@ export default function CandyCrush() {
                   }
                   return updated;
                 });
-              }, 700);
+              }, 500);
             }
-          } else {
-            // Generar nuevo caramelo aleatorio
-            const newColor = CANDY_COLORS[Math.floor(Math.random() * CANDY_COLORS.length)];
-            newGrid[index].color = newColor;
-            newGrid[index].animationClass = 'anim-appear';
-            
-            // Limpiar animación después
-            setTimeout(() => {
-              setGrid(current => {
-                const updated = [...current];
-                if (updated[index]) {
-                  updated[index].animationClass = '';
-                }
-                return updated;
-              });
-            }, 500);
           }
         }
       }
