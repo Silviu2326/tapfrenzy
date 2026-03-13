@@ -575,7 +575,7 @@ export default function Game() {
           
           <div 
             className={`danger-line ${isDangerActive ? 'active' : ''}`}
-            style={{ top: DANGER_Y }}
+            style={{ top: DANGER_Y, transform: 'rotate(180deg)' }}
           />
           
           {bottles.map((bottle) => (
@@ -586,8 +586,8 @@ export default function Game() {
             />
           ))}
           
-          <div className="bottle-preview" style={getPreviewStyle()}>
-            <div className="guide-line" style={{ top: -DROP_Y + AREA.y }} />
+          <div className="bottle-preview" style={{ ...getPreviewStyle(), transform: 'rotate(180deg)' }}>
+            <div className="guide-line" style={{ top: -DROP_Y + AREA.y, transform: 'translateX(-50%) rotate(180deg)' }} />
             <img src={TIERS[currentTier].img} alt="" />
           </div>
           
@@ -632,7 +632,7 @@ export default function Game() {
           
           <div className="next-bottle">
             <span className="next-label">NEXT</span>
-            <img src={TIERS[nextTier].img} alt={TIERS[nextTier].name} />
+            <img src={TIERS[nextTier].img} alt={TIERS[nextTier].name} style={{ transform: 'rotate(180deg)' }} />
             <span className="next-name">{TIERS[nextTier].name}</span>
           </div>
           
@@ -665,7 +665,7 @@ export default function Game() {
                       className="tier-showcase"
                       style={{ opacity: 0.5 + i * 0.25 }}
                     >
-                      <img src={TIERS[tierIdx].img} alt={TIERS[tierIdx].name} />
+                      <img src={TIERS[tierIdx].img} alt={TIERS[tierIdx].name} style={{ transform: 'rotate(180deg)' }} />
                       <span style={{ color: TIERS[tierIdx].c }}>{TIERS[tierIdx].name}</span>
                     </div>
                   ))}
@@ -730,11 +730,11 @@ const BottleComponent = ({ body, tierIndex }: BottleProps) => {
         top: position.y - tier.dh / 2,
         width: tier.dw,
         height: tier.dh,
-        transform: `scale(${scale})`,
+        transform: `scale(${scale}) rotate(180deg)`,
         transition: 'transform 0.3s ease',
       }}
     >
-      <img src={tier.img} alt={tier.name} />
+      <img src={tier.img} alt={tier.name} style={{ transform: 'rotate(180deg)' }} />
     </div>
   );
 };
