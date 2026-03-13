@@ -27,7 +27,8 @@ export default function CandyCrush() {
   const [draggedCell, setDraggedCell] = useState<number | null>(null);
   const [replacedCell, setReplacedCell] = useState<number | null>(null);
   const [selectedCell, setSelectedCell] = useState<number | null>(null);
-  const [touchStartPos, setTouchStartPos] = useState<{ x: number; y: number } | null>(null);
+  const [touchStartPos, setTouchStartPos] = useState<{ x: number; y: number; id: number } | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
   const gridRef = useRef<HTMLDivElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -65,7 +66,7 @@ export default function CandyCrush() {
   };
 
   // Intercambiar dos celdas
-  const swapCells = (id1: number, id2: number, animate = true) => {
+  const swapCells = useCallback((id1: number, id2: number, animate = true) => {
     if (!isAdjacent(id1, id2)) return false;
     
     setGrid(prev => {
@@ -89,10 +90,14 @@ export default function CandyCrush() {
         setTimeout(() => {
           setGrid(current => {
             const updated = [...current];
-            updated[id1].animationClass = '';
-            updated[id1].isAnimating = false;
-            updated[id2].animationClass = '';
-            updated[id2].isAnimating = false;
+            if (updated[id1]) {
+              updated[id1].animationClass = '';
+              updated[id1].isAnimating = false;
+            }
+            if (updated[id2]) {
+              updated[id2].animationClass = '';
+              updated[id2].isAnimating = false;
+            }
             return updated;
           });
         }, 400);
@@ -102,7 +107,7 @@ export default function CandyCrush() {
     });
     
     return true;
-  };
+  }, []);
 
   // Obtener dirección del swap
   const getSwapDirection = (fromId: number, toId: number) => {
@@ -124,10 +129,9 @@ export default function CandyCrush() {
       const rowOfFour = [i, i + 1, i + 2, i + 3];
       const decidedColor = grid[i]?.color;
       
-      if (!decidedColor) continue;
+      if (!decidedColor || decidedColor === '') continue;
       
-      const isBlank = decidedColor === '';
-      const allMatch = rowOfFour.every(index => grid[index]?.color === decidedColor && !isBlank);
+      const allMatch = rowOfFour.every(index => grid[index]?.color === decidedColor);
       
       if (allMatch) {
         setScore(prev => prev + 4);
@@ -173,10 +177,9 @@ export default function CandyCrush() {
       const columnOfFour = [i, i + WIDTH, i + WIDTH * 2, i + WIDTH * 3];
       const decidedColor = grid[i]?.color;
       
-      if (!decidedColor) continue;
+      if (!decidedColor || decidedColor === '') continue;
       
-      const isBlank = decidedColor === '';
-      const allMatch = columnOfFour.every(index => grid[index]?.color === decidedColor && !isBlank);
+      const allMatch = columnOfFour.every(index => grid[index]?.color === decidedColor);
       
       if (allMatch) {
         setScore(prev => prev + 4);
@@ -225,10 +228,9 @@ export default function CandyCrush() {
       const rowOfThree = [i, i + 1, i + 2];
       const decidedColor = grid[i]?.color;
       
-      if (!decidedColor) continue;
+      if (!decidedColor || decidedColor === '') continue;
       
-      const isBlank = decidedColor === '';
-      const allMatch = rowOfThree.every(index => grid[index]?.color === decidedColor && !isBlank);
+      const allMatch = rowOfThree.every(index => grid[index]?.color === decidedColor);
       
       if (allMatch) {
         setScore(prev => prev + 3);
@@ -274,10 +276,9 @@ export default function CandyCrush() {
       const columnOfThree = [i, i + WIDTH, i + WIDTH * 2];
       const decidedColor = grid[i]?.color;
       
-      if (!decidedColor) continue;
+      if (!decidedColor || decidedColor === '') continue;
       
-      const isBlank = decidedColor === '';
-      const allMatch = columnOfThree.every(index => grid[index]?.color === decidedColor && !isBlank);
+      const allMatch = columnOfThree.every(index => grid[index]?.color === decidedColor);
       
       if (allMatch) {
         setScore(prev => prev + 3);
@@ -367,6 +368,8 @@ export default function CandyCrush() {
 
   // Intervalo para verificar matches
   useEffect(() => {
+    if (isProcessing) return;
+    
     intervalRef.current = setInterval(() => {
       const row4 = checkRowForFour();
       const col4 = checkColumnForFour();
@@ -385,27 +388,37 @@ export default function CandyCrush() {
         clearInterval(intervalRef.current);
       }
     };
-  }, [checkRowForFour, checkColumnForFour, checkRowForThree, checkColumnForThree, moveIntoSquareBelow]);
+  }, [checkRowForFour, checkColumnForFour, checkRowForThree, checkColumnForThree, moveIntoSquareBelow, isProcessing]);
 
   // Drag events
-  const handleDragStart = (id: number) => {
+  const handleDragStart = (e: React.DragEvent, id: number) => {
+    e.dataTransfer.effectAllowed = 'move';
     setDraggedCell(id);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDrop = (id: number) => {
+  const handleDrop = (e: React.DragEvent, id: number) => {
+    e.preventDefault();
     setReplacedCell(id);
   };
 
   // Procesar drag and drop
   useEffect(() => {
     if (draggedCell !== null && replacedCell !== null) {
+      if (draggedCell === replacedCell) {
+        setDraggedCell(null);
+        setReplacedCell(null);
+        return;
+      }
+      
       const isValidMove = isAdjacent(draggedCell, replacedCell);
       
       if (isValidMove) {
+        setIsProcessing(true);
         const colorDragged = grid[draggedCell]?.color;
         const colorReplaced = grid[replacedCell]?.color;
         
@@ -432,11 +445,14 @@ export default function CandyCrush() {
                     updated[replacedCell].animationClass = '';
                     return updated;
                   });
+                  setIsProcessing(false);
                 }, 600);
                 
                 return newGrid;
               });
             }, 400);
+          } else {
+            setTimeout(() => setIsProcessing(false), 600);
           }
         }, 400);
       }
@@ -444,49 +460,83 @@ export default function CandyCrush() {
       setDraggedCell(null);
       setReplacedCell(null);
     }
-  }, [draggedCell, replacedCell, grid, checkRowForFour, checkColumnForFour, checkRowForThree, checkColumnForThree]);
+  }, [draggedCell, replacedCell, grid, swapCells, checkRowForFour, checkColumnForFour, checkRowForThree, checkColumnForThree]);
 
-  // Touch events
+  // Touch events - Versión mejorada
   const handleTouchStart = (e: React.TouchEvent, id: number) => {
     const touch = e.touches[0];
-    setTouchStartPos({ x: touch.clientX, y: touch.clientY });
-    setDraggedCell(id);
+    setTouchStartPos({ x: touch.clientX, y: touch.clientY, id });
   };
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    e.preventDefault();
+  const handleTouchMove = (_e: React.TouchEvent) => {
+    // No prevenir default para permitir scroll nativo si es necesario
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
-    if (!touchStartPos || draggedCell === null) return;
+    if (!touchStartPos) return;
     
     const touch = e.changedTouches[0];
     const deltaX = touch.clientX - touchStartPos.x;
     const deltaY = touch.clientY - touchStartPos.y;
     const minSwipeDistance = 30;
     
+    const draggedId = touchStartPos.id;
     let targetCell: number | null = null;
     
     if (Math.abs(deltaX) > Math.abs(deltaY)) {
       if (Math.abs(deltaX) > minSwipeDistance) {
-        if (deltaX > 0 && (draggedCell % WIDTH) < WIDTH - 1) {
-          targetCell = draggedCell + 1;
-        } else if (deltaX < 0 && (draggedCell % WIDTH) > 0) {
-          targetCell = draggedCell - 1;
+        if (deltaX > 0 && (draggedId % WIDTH) < WIDTH - 1) {
+          targetCell = draggedId + 1;
+        } else if (deltaX < 0 && (draggedId % WIDTH) > 0) {
+          targetCell = draggedId - 1;
         }
       }
     } else {
       if (Math.abs(deltaY) > minSwipeDistance) {
-        if (deltaY > 0 && Math.floor(draggedCell / WIDTH) < WIDTH - 1) {
-          targetCell = draggedCell + WIDTH;
-        } else if (deltaY < 0 && Math.floor(draggedCell / WIDTH) > 0) {
-          targetCell = draggedCell - WIDTH;
+        if (deltaY > 0 && Math.floor(draggedId / WIDTH) < WIDTH - 1) {
+          targetCell = draggedId + WIDTH;
+        } else if (deltaY < 0 && Math.floor(draggedId / WIDTH) > 0) {
+          targetCell = draggedId - WIDTH;
         }
       }
     }
     
-    if (targetCell !== null) {
-      setReplacedCell(targetCell);
+    if (targetCell !== null && !isProcessing) {
+      setIsProcessing(true);
+      const colorDragged = grid[draggedId]?.color;
+      const colorReplaced = grid[targetCell]?.color;
+      
+      swapCells(draggedId, targetCell);
+      
+      setTimeout(() => {
+        const hasMatches = checkRowForFour() || checkColumnForFour() || checkRowForThree() || checkColumnForThree();
+        
+        if (!hasMatches) {
+          setTimeout(() => {
+            setGrid(prev => {
+              const newGrid = [...prev];
+              newGrid[draggedId].color = colorDragged;
+              newGrid[targetCell!].color = colorReplaced;
+              newGrid[draggedId].animationClass = 'anim-shake';
+              newGrid[targetCell!].animationClass = 'anim-shake';
+              
+              setTimeout(() => {
+                setGrid(current => {
+                  const updated = [...current];
+                  updated[draggedId].animationClass = '';
+                  updated[targetCell!].animationClass = '';
+                  return updated;
+                });
+                setIsProcessing(false);
+              }, 600);
+              
+              return newGrid;
+            });
+          }, 400);
+        } else {
+          setTimeout(() => setIsProcessing(false), 600);
+        }
+      }, 400);
     }
     
     setTouchStartPos(null);
@@ -494,11 +544,14 @@ export default function CandyCrush() {
 
   // Click para selección
   const handleCellClick = (id: number) => {
+    if (isProcessing) return;
+    
     if (selectedCell === null) {
       setSelectedCell(id);
     } else if (selectedCell === id) {
       setSelectedCell(null);
     } else if (isAdjacent(selectedCell, id)) {
+      setIsProcessing(true);
       const colorSelected = grid[selectedCell]?.color;
       const colorClicked = grid[id]?.color;
       
@@ -523,11 +576,14 @@ export default function CandyCrush() {
                   updated[id].animationClass = '';
                   return updated;
                 });
+                setIsProcessing(false);
               }, 600);
               
               return newGrid;
             });
           }, 400);
+        } else {
+          setTimeout(() => setIsProcessing(false), 600);
         }
       }, 400);
       
@@ -553,12 +609,15 @@ export default function CandyCrush() {
           {grid.map((cell, index) => (
             <div
               key={cell.id}
-              className={`candy-cell ${cell.animationClass} ${selectedCell === index ? 'selected' : ''} ${cell.isAnimating ? 'animating' : ''}`}
-              style={{ backgroundImage: cell.color ? `url(${cell.color})` : 'none' }}
-              draggable
-              onDragStart={() => handleDragStart(index)}
+              className={`candy-cell ${cell.animationClass} ${selectedCell === index ? 'selected' : ''}`}
+              style={{ 
+                backgroundImage: cell.color ? `url(${cell.color})` : 'none',
+                opacity: cell.color ? 1 : 0
+              }}
+              draggable={!isProcessing}
+              onDragStart={(e) => handleDragStart(e, index)}
               onDragOver={handleDragOver}
-              onDrop={() => handleDrop(index)}
+              onDrop={(e) => handleDrop(e, index)}
               onTouchStart={(e) => handleTouchStart(e, index)}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
