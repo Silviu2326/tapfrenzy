@@ -15,8 +15,6 @@ const CANDY_COLORS = [
 interface Cell {
   id: number;
   color: string;
-  isMatched: boolean;
-  isAnimating: boolean;
   animationClass: string;
 }
 
@@ -24,13 +22,21 @@ export default function CandyCrush() {
   const navigate = useNavigate();
   const [grid, setGrid] = useState<Cell[]>([]);
   const [score, setScore] = useState(0);
-  const [draggedCell, setDraggedCell] = useState<number | null>(null);
-  const [replacedCell, setReplacedCell] = useState<number | null>(null);
   const [selectedCell, setSelectedCell] = useState<number | null>(null);
-  const [touchStartPos, setTouchStartPos] = useState<{ x: number; y: number; id: number } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const gridRef = useRef<HTMLDivElement>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Usar ref para acceder al grid actual en callbacks
+  const gridRef = useRef<Cell[]>([]);
+  const isProcessingRef = useRef(false);
+  
+  // Sincronizar refs con estado
+  useEffect(() => {
+    gridRef.current = grid;
+  }, [grid]);
+  
+  useEffect(() => {
+    isProcessingRef.current = isProcessing;
+  }, [isProcessing]);
 
   // Crear tablero inicial
   const createBoard = useCallback(() => {
@@ -39,12 +45,11 @@ export default function CandyCrush() {
       newGrid.push({
         id: i,
         color: CANDY_COLORS[Math.floor(Math.random() * CANDY_COLORS.length)],
-        isMatched: false,
-        isAnimating: false,
         animationClass: ''
       });
     }
     setGrid(newGrid);
+    gridRef.current = newGrid;
   }, []);
 
   // Inicializar tablero
@@ -65,50 +70,6 @@ export default function CandyCrush() {
     return (rowDiff === 1 && colDiff === 0) || (rowDiff === 0 && colDiff === 1);
   };
 
-  // Intercambiar dos celdas
-  const swapCells = useCallback((id1: number, id2: number, animate = true) => {
-    if (!isAdjacent(id1, id2)) return false;
-    
-    setGrid(prev => {
-      const newGrid = [...prev];
-      const temp = newGrid[id1].color;
-      newGrid[id1].color = newGrid[id2].color;
-      newGrid[id2].color = temp;
-      
-      if (animate) {
-        const dir1 = getSwapDirection(id1, id2);
-        const dir2 = getSwapDirection(id2, id1);
-        if (dir1) {
-          newGrid[id1].animationClass = `anim-swap-${dir1}`;
-          newGrid[id1].isAnimating = true;
-        }
-        if (dir2) {
-          newGrid[id2].animationClass = `anim-swap-${dir2}`;
-          newGrid[id2].isAnimating = true;
-        }
-        
-        setTimeout(() => {
-          setGrid(current => {
-            const updated = [...current];
-            if (updated[id1]) {
-              updated[id1].animationClass = '';
-              updated[id1].isAnimating = false;
-            }
-            if (updated[id2]) {
-              updated[id2].animationClass = '';
-              updated[id2].isAnimating = false;
-            }
-            return updated;
-          });
-        }, 400);
-      }
-      
-      return newGrid;
-    });
-    
-    return true;
-  }, []);
-
   // Obtener dirección del swap
   const getSwapDirection = (fromId: number, toId: number) => {
     if (toId === fromId + 1) return 'right';
@@ -118,8 +79,9 @@ export default function CandyCrush() {
     return null;
   };
 
-  // Verificar filas de 4
-  const checkRowForFour = useCallback(() => {
+  // Verificar filas de 4 - usando ref para estado actual
+  const checkRowForFour = () => {
+    const currentGrid = gridRef.current;
     let matchesFound = false;
     const notValid = [5, 6, 7, 13, 14, 15, 21, 22, 23, 29, 30, 31, 37, 38, 39, 45, 46, 47, 53, 54, 55];
     
@@ -127,11 +89,11 @@ export default function CandyCrush() {
       if (notValid.includes(i)) continue;
       
       const rowOfFour = [i, i + 1, i + 2, i + 3];
-      const decidedColor = grid[i]?.color;
+      const decidedColor = currentGrid[i]?.color;
       
       if (!decidedColor || decidedColor === '') continue;
       
-      const allMatch = rowOfFour.every(index => grid[index]?.color === decidedColor);
+      const allMatch = rowOfFour.every(index => currentGrid[index]?.color === decidedColor);
       
       if (allMatch) {
         setScore(prev => prev + 4);
@@ -141,9 +103,7 @@ export default function CandyCrush() {
           const newGrid = [...prev];
           rowOfFour.forEach(index => {
             if (newGrid[index]) {
-              newGrid[index].isMatched = true;
               newGrid[index].animationClass = 'anim-match';
-              newGrid[index].isAnimating = true;
             }
           });
           return newGrid;
@@ -155,9 +115,7 @@ export default function CandyCrush() {
             rowOfFour.forEach(index => {
               if (updated[index]) {
                 updated[index].color = '';
-                updated[index].isMatched = false;
                 updated[index].animationClass = '';
-                updated[index].isAnimating = false;
               }
             });
             return updated;
@@ -167,19 +125,20 @@ export default function CandyCrush() {
     }
     
     return matchesFound;
-  }, [grid]);
+  };
 
   // Verificar columnas de 4
-  const checkColumnForFour = useCallback(() => {
+  const checkColumnForFour = () => {
+    const currentGrid = gridRef.current;
     let matchesFound = false;
     
     for (let i = 0; i < 39; i++) {
       const columnOfFour = [i, i + WIDTH, i + WIDTH * 2, i + WIDTH * 3];
-      const decidedColor = grid[i]?.color;
+      const decidedColor = currentGrid[i]?.color;
       
       if (!decidedColor || decidedColor === '') continue;
       
-      const allMatch = columnOfFour.every(index => grid[index]?.color === decidedColor);
+      const allMatch = columnOfFour.every(index => currentGrid[index]?.color === decidedColor);
       
       if (allMatch) {
         setScore(prev => prev + 4);
@@ -189,9 +148,7 @@ export default function CandyCrush() {
           const newGrid = [...prev];
           columnOfFour.forEach(index => {
             if (newGrid[index]) {
-              newGrid[index].isMatched = true;
               newGrid[index].animationClass = 'anim-match';
-              newGrid[index].isAnimating = true;
             }
           });
           return newGrid;
@@ -203,9 +160,7 @@ export default function CandyCrush() {
             columnOfFour.forEach(index => {
               if (updated[index]) {
                 updated[index].color = '';
-                updated[index].isMatched = false;
                 updated[index].animationClass = '';
-                updated[index].isAnimating = false;
               }
             });
             return updated;
@@ -215,10 +170,11 @@ export default function CandyCrush() {
     }
     
     return matchesFound;
-  }, [grid]);
+  };
 
   // Verificar filas de 3
-  const checkRowForThree = useCallback(() => {
+  const checkRowForThree = () => {
+    const currentGrid = gridRef.current;
     let matchesFound = false;
     const notValid = [6, 7, 14, 15, 22, 23, 30, 31, 38, 39, 46, 47, 54, 55];
     
@@ -226,11 +182,11 @@ export default function CandyCrush() {
       if (notValid.includes(i)) continue;
       
       const rowOfThree = [i, i + 1, i + 2];
-      const decidedColor = grid[i]?.color;
+      const decidedColor = currentGrid[i]?.color;
       
       if (!decidedColor || decidedColor === '') continue;
       
-      const allMatch = rowOfThree.every(index => grid[index]?.color === decidedColor);
+      const allMatch = rowOfThree.every(index => currentGrid[index]?.color === decidedColor);
       
       if (allMatch) {
         setScore(prev => prev + 3);
@@ -240,9 +196,7 @@ export default function CandyCrush() {
           const newGrid = [...prev];
           rowOfThree.forEach(index => {
             if (newGrid[index]) {
-              newGrid[index].isMatched = true;
               newGrid[index].animationClass = 'anim-match';
-              newGrid[index].isAnimating = true;
             }
           });
           return newGrid;
@@ -254,9 +208,7 @@ export default function CandyCrush() {
             rowOfThree.forEach(index => {
               if (updated[index]) {
                 updated[index].color = '';
-                updated[index].isMatched = false;
                 updated[index].animationClass = '';
-                updated[index].isAnimating = false;
               }
             });
             return updated;
@@ -266,19 +218,20 @@ export default function CandyCrush() {
     }
     
     return matchesFound;
-  }, [grid]);
+  };
 
   // Verificar columnas de 3
-  const checkColumnForThree = useCallback(() => {
+  const checkColumnForThree = () => {
+    const currentGrid = gridRef.current;
     let matchesFound = false;
     
     for (let i = 0; i < 47; i++) {
       const columnOfThree = [i, i + WIDTH, i + WIDTH * 2];
-      const decidedColor = grid[i]?.color;
+      const decidedColor = currentGrid[i]?.color;
       
       if (!decidedColor || decidedColor === '') continue;
       
-      const allMatch = columnOfThree.every(index => grid[index]?.color === decidedColor);
+      const allMatch = columnOfThree.every(index => currentGrid[index]?.color === decidedColor);
       
       if (allMatch) {
         setScore(prev => prev + 3);
@@ -288,9 +241,7 @@ export default function CandyCrush() {
           const newGrid = [...prev];
           columnOfThree.forEach(index => {
             if (newGrid[index]) {
-              newGrid[index].isMatched = true;
               newGrid[index].animationClass = 'anim-match';
-              newGrid[index].isAnimating = true;
             }
           });
           return newGrid;
@@ -302,9 +253,7 @@ export default function CandyCrush() {
             columnOfThree.forEach(index => {
               if (updated[index]) {
                 updated[index].color = '';
-                updated[index].isMatched = false;
                 updated[index].animationClass = '';
-                updated[index].isAnimating = false;
               }
             });
             return updated;
@@ -314,10 +263,10 @@ export default function CandyCrush() {
     }
     
     return matchesFound;
-  }, [grid]);
+  };
 
   // Mover caramelos hacia abajo
-  const moveIntoSquareBelow = useCallback(() => {
+  const moveIntoSquareBelow = () => {
     setGrid(prev => {
       const newGrid = [...prev];
       
@@ -327,14 +276,12 @@ export default function CandyCrush() {
           newGrid[i + WIDTH].color = newGrid[i].color;
           newGrid[i].color = '';
           newGrid[i + WIDTH].animationClass = 'anim-drop';
-          newGrid[i + WIDTH].isAnimating = true;
           
           setTimeout(() => {
             setGrid(current => {
               const updated = [...current];
               if (updated[i + WIDTH]) {
                 updated[i + WIDTH].animationClass = '';
-                updated[i + WIDTH].isAnimating = false;
               }
               return updated;
             });
@@ -347,14 +294,12 @@ export default function CandyCrush() {
         if (newGrid[i]?.color === '') {
           newGrid[i].color = CANDY_COLORS[Math.floor(Math.random() * CANDY_COLORS.length)];
           newGrid[i].animationClass = 'anim-appear';
-          newGrid[i].isAnimating = true;
           
           setTimeout(() => {
             setGrid(current => {
               const updated = [...current];
               if (updated[i]) {
                 updated[i].animationClass = '';
-                updated[i].isAnimating = false;
               }
               return updated;
             });
@@ -364,13 +309,13 @@ export default function CandyCrush() {
       
       return newGrid;
     });
-  }, []);
+  };
 
   // Intervalo para verificar matches
   useEffect(() => {
-    if (isProcessing) return;
-    
-    intervalRef.current = setInterval(() => {
+    const interval = setInterval(() => {
+      if (isProcessingRef.current) return;
+      
       const row4 = checkRowForFour();
       const col4 = checkColumnForFour();
       const row3 = checkRowForThree();
@@ -383,17 +328,97 @@ export default function CandyCrush() {
       }
     }, 150);
     
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Intercambiar dos celdas
+  const swapCells = (id1: number, id2: number) => {
+    if (!isAdjacent(id1, id2)) return false;
+    
+    const currentGrid = gridRef.current;
+    const color1 = currentGrid[id1]?.color;
+    const color2 = currentGrid[id2]?.color;
+    
+    setGrid(prev => {
+      const newGrid = [...prev];
+      newGrid[id1].color = color2;
+      newGrid[id2].color = color1;
+      
+      const dir1 = getSwapDirection(id1, id2);
+      const dir2 = getSwapDirection(id2, id1);
+      if (dir1) newGrid[id1].animationClass = `anim-swap-${dir1}`;
+      if (dir2) newGrid[id2].animationClass = `anim-swap-${dir2}`;
+      
+      setTimeout(() => {
+        setGrid(current => {
+          const updated = [...current];
+          if (updated[id1]) updated[id1].animationClass = '';
+          if (updated[id2]) updated[id2].animationClass = '';
+          return updated;
+        });
+      }, 400);
+      
+      return newGrid;
+    });
+    
+    return true;
+  };
+
+  // Procesar un movimiento y verificar si crea matches
+  const processMove = (id1: number, id2: number) => {
+    if (!isAdjacent(id1, id2) || isProcessingRef.current) return;
+    
+    setIsProcessing(true);
+    isProcessingRef.current = true;
+    
+    const currentGrid = gridRef.current;
+    const color1 = currentGrid[id1]?.color;
+    const color2 = currentGrid[id2]?.color;
+    
+    // Realizar swap
+    swapCells(id1, id2);
+    
+    // Esperar a que el swap se complete y verificar matches
+    setTimeout(() => {
+      const hasMatches = checkRowForFour() || checkColumnForFour() || checkRowForThree() || checkColumnForThree();
+      
+      if (!hasMatches) {
+        // Revertir si no hay matches
+        setTimeout(() => {
+          setGrid(prev => {
+            const newGrid = [...prev];
+            newGrid[id1].color = color1;
+            newGrid[id2].color = color2;
+            newGrid[id1].animationClass = 'anim-shake';
+            newGrid[id2].animationClass = 'anim-shake';
+            
+            setTimeout(() => {
+              setGrid(current => {
+                const updated = [...current];
+                updated[id1].animationClass = '';
+                updated[id2].animationClass = '';
+                return updated;
+              });
+              setIsProcessing(false);
+              isProcessingRef.current = false;
+            }, 600);
+            
+            return newGrid;
+          });
+        }, 400);
+      } else {
+        setTimeout(() => {
+          setIsProcessing(false);
+          isProcessingRef.current = false;
+        }, 600);
       }
-    };
-  }, [checkRowForFour, checkColumnForFour, checkRowForThree, checkColumnForThree, moveIntoSquareBelow, isProcessing]);
+    }, 400);
+  };
 
   // Drag events
   const handleDragStart = (e: React.DragEvent, id: number) => {
     e.dataTransfer.effectAllowed = 'move';
-    setDraggedCell(id);
+    e.dataTransfer.setData('text/plain', id.toString());
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -403,190 +428,73 @@ export default function CandyCrush() {
 
   const handleDrop = (e: React.DragEvent, id: number) => {
     e.preventDefault();
-    setReplacedCell(id);
+    const draggedId = parseInt(e.dataTransfer.getData('text/plain'));
+    if (!isNaN(draggedId)) {
+      processMove(draggedId, id);
+    }
   };
 
-  // Procesar drag and drop
-  useEffect(() => {
-    if (draggedCell !== null && replacedCell !== null) {
-      if (draggedCell === replacedCell) {
-        setDraggedCell(null);
-        setReplacedCell(null);
-        return;
-      }
-      
-      const isValidMove = isAdjacent(draggedCell, replacedCell);
-      
-      if (isValidMove) {
-        setIsProcessing(true);
-        const colorDragged = grid[draggedCell]?.color;
-        const colorReplaced = grid[replacedCell]?.color;
-        
-        swapCells(draggedCell, replacedCell);
-        
-        // Verificar si el movimiento crea matches
-        setTimeout(() => {
-          const hasMatches = checkRowForFour() || checkColumnForFour() || checkRowForThree() || checkColumnForThree();
-          
-          if (!hasMatches) {
-            // Revertir si no hay matches
-            setTimeout(() => {
-              setGrid(prev => {
-                const newGrid = [...prev];
-                newGrid[draggedCell].color = colorDragged;
-                newGrid[replacedCell].color = colorReplaced;
-                newGrid[draggedCell].animationClass = 'anim-shake';
-                newGrid[replacedCell].animationClass = 'anim-shake';
-                
-                setTimeout(() => {
-                  setGrid(current => {
-                    const updated = [...current];
-                    updated[draggedCell].animationClass = '';
-                    updated[replacedCell].animationClass = '';
-                    return updated;
-                  });
-                  setIsProcessing(false);
-                }, 600);
-                
-                return newGrid;
-              });
-            }, 400);
-          } else {
-            setTimeout(() => setIsProcessing(false), 600);
-          }
-        }, 400);
-      }
-      
-      setDraggedCell(null);
-      setReplacedCell(null);
-    }
-  }, [draggedCell, replacedCell, grid, swapCells, checkRowForFour, checkColumnForFour, checkRowForThree, checkColumnForThree]);
-
-  // Touch events - Versión mejorada
+  // Touch events
   const handleTouchStart = (e: React.TouchEvent, id: number) => {
     const touch = e.touches[0];
-    setTouchStartPos({ x: touch.clientX, y: touch.clientY, id });
-  };
-
-  const handleTouchMove = (_e: React.TouchEvent) => {
-    // No prevenir default para permitir scroll nativo si es necesario
+    (e.currentTarget as HTMLElement).dataset.touchStartX = touch.clientX.toString();
+    (e.currentTarget as HTMLElement).dataset.touchStartY = touch.clientY.toString();
+    (e.currentTarget as HTMLElement).dataset.touchId = id.toString();
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
-    if (!touchStartPos) return;
+    const target = e.currentTarget as HTMLElement;
+    const startX = parseFloat(target.dataset.touchStartX || '0');
+    const startY = parseFloat(target.dataset.touchStartY || '0');
+    const startId = parseInt(target.dataset.touchId || '-1');
+    
+    if (startId === -1) return;
     
     const touch = e.changedTouches[0];
-    const deltaX = touch.clientX - touchStartPos.x;
-    const deltaY = touch.clientY - touchStartPos.y;
+    const deltaX = touch.clientX - startX;
+    const deltaY = touch.clientY - startY;
     const minSwipeDistance = 30;
     
-    const draggedId = touchStartPos.id;
     let targetCell: number | null = null;
     
     if (Math.abs(deltaX) > Math.abs(deltaY)) {
       if (Math.abs(deltaX) > minSwipeDistance) {
-        if (deltaX > 0 && (draggedId % WIDTH) < WIDTH - 1) {
-          targetCell = draggedId + 1;
-        } else if (deltaX < 0 && (draggedId % WIDTH) > 0) {
-          targetCell = draggedId - 1;
+        if (deltaX > 0 && (startId % WIDTH) < WIDTH - 1) {
+          targetCell = startId + 1;
+        } else if (deltaX < 0 && (startId % WIDTH) > 0) {
+          targetCell = startId - 1;
         }
       }
     } else {
       if (Math.abs(deltaY) > minSwipeDistance) {
-        if (deltaY > 0 && Math.floor(draggedId / WIDTH) < WIDTH - 1) {
-          targetCell = draggedId + WIDTH;
-        } else if (deltaY < 0 && Math.floor(draggedId / WIDTH) > 0) {
-          targetCell = draggedId - WIDTH;
+        if (deltaY > 0 && Math.floor(startId / WIDTH) < WIDTH - 1) {
+          targetCell = startId + WIDTH;
+        } else if (deltaY < 0 && Math.floor(startId / WIDTH) > 0) {
+          targetCell = startId - WIDTH;
         }
       }
     }
     
-    if (targetCell !== null && !isProcessing) {
-      setIsProcessing(true);
-      const colorDragged = grid[draggedId]?.color;
-      const colorReplaced = grid[targetCell]?.color;
-      
-      swapCells(draggedId, targetCell);
-      
-      setTimeout(() => {
-        const hasMatches = checkRowForFour() || checkColumnForFour() || checkRowForThree() || checkColumnForThree();
-        
-        if (!hasMatches) {
-          setTimeout(() => {
-            setGrid(prev => {
-              const newGrid = [...prev];
-              newGrid[draggedId].color = colorDragged;
-              newGrid[targetCell!].color = colorReplaced;
-              newGrid[draggedId].animationClass = 'anim-shake';
-              newGrid[targetCell!].animationClass = 'anim-shake';
-              
-              setTimeout(() => {
-                setGrid(current => {
-                  const updated = [...current];
-                  updated[draggedId].animationClass = '';
-                  updated[targetCell!].animationClass = '';
-                  return updated;
-                });
-                setIsProcessing(false);
-              }, 600);
-              
-              return newGrid;
-            });
-          }, 400);
-        } else {
-          setTimeout(() => setIsProcessing(false), 600);
-        }
-      }, 400);
+    if (targetCell !== null) {
+      processMove(startId, targetCell);
     }
     
-    setTouchStartPos(null);
+    // Limpiar dataset
+    delete target.dataset.touchStartX;
+    delete target.dataset.touchStartY;
+    delete target.dataset.touchId;
   };
 
   // Click para selección
   const handleCellClick = (id: number) => {
-    if (isProcessing) return;
+    if (isProcessingRef.current) return;
     
     if (selectedCell === null) {
       setSelectedCell(id);
     } else if (selectedCell === id) {
       setSelectedCell(null);
     } else if (isAdjacent(selectedCell, id)) {
-      setIsProcessing(true);
-      const colorSelected = grid[selectedCell]?.color;
-      const colorClicked = grid[id]?.color;
-      
-      swapCells(selectedCell, id);
-      
-      setTimeout(() => {
-        const hasMatches = checkRowForFour() || checkColumnForFour() || checkRowForThree() || checkColumnForThree();
-        
-        if (!hasMatches) {
-          setTimeout(() => {
-            setGrid(prev => {
-              const newGrid = [...prev];
-              newGrid[selectedCell].color = colorSelected;
-              newGrid[id].color = colorClicked;
-              newGrid[selectedCell].animationClass = 'anim-shake';
-              newGrid[id].animationClass = 'anim-shake';
-              
-              setTimeout(() => {
-                setGrid(current => {
-                  const updated = [...current];
-                  updated[selectedCell].animationClass = '';
-                  updated[id].animationClass = '';
-                  return updated;
-                });
-                setIsProcessing(false);
-              }, 600);
-              
-              return newGrid;
-            });
-          }, 400);
-        } else {
-          setTimeout(() => setIsProcessing(false), 600);
-        }
-      }, 400);
-      
+      processMove(selectedCell, id);
       setSelectedCell(null);
     } else {
       setSelectedCell(id);
@@ -605,7 +513,7 @@ export default function CandyCrush() {
           <h1 className={score > 0 ? 'score-update' : ''}>{score}</h1>
         </div>
         
-        <div className="candy-grid" ref={gridRef}>
+        <div className="candy-grid">
           {grid.map((cell, index) => (
             <div
               key={cell.id}
@@ -619,7 +527,6 @@ export default function CandyCrush() {
               onDragOver={handleDragOver}
               onDrop={(e) => handleDrop(e, index)}
               onTouchStart={(e) => handleTouchStart(e, index)}
-              onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
               onClick={() => handleCellClick(index)}
             />
