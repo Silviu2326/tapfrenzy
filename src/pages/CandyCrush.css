@@ -5,7 +5,11 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #1a0a05 0%, #0d0503 100%);
+  background-image: url('/assets/candy-crush-bg.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
   position: relative;
   overflow: hidden;
 }
