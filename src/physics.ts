@@ -3,7 +3,7 @@
 // ==========================================
 
 import Matter from 'matter-js';
-import { AREA, MERGE_DELAY, TIERS } from './config';
+import { AREA, MERGE_DELAY, TIERS, getTrapezoidBounds } from './config';
 
 // Tipos
 export interface MergeData {
@@ -34,72 +34,69 @@ export const createPhysicsEngine = (): { engine: Matter.Engine; world: Matter.Wo
   
   const engine = Matter.Engine.create({
     enableSleeping: true,
-    gravity: { x: 0, y: -1.4 }, // Gravedad negativa (lanzamiento hacia arriba)
-    positionIterations: 8,     // Más iteraciones para posición (mejor estabilidad)
-    velocityIterations: 8,     // Más iteraciones para velocidad (mejor estabilidad)
+    gravity: { x: 0, y: -1.6 }, // Gravedad negativa (lanzamiento hacia arriba)
+    positionIterations: 10,     // Más iteraciones para posición (mejor estabilidad)
+    velocityIterations: 10,     // Más iteraciones para velocidad (mejor estabilidad)
   });
   
   engineInstance = engine;
   
   const { world } = engine;
   
-  // Crear paredes
+  // Crear paredes - muy baja fricción y biselado para evitar atascos
   const wallOpts: Matter.IChamferableBodyDefinition = { 
     isStatic: true, 
     restitution: 0.1, 
-    friction: 0.4, 
-    frictionStatic: 0.3,
+    friction: 0.01, 
+    frictionStatic: 0.01,
+    chamfer: { radius: 4 }, // Biselado para evitar esquinas afiladas
     label: 'wall',
     render: { visible: false }
   };
   
-  // La mesa tiene forma de trapecio - más ancha arriba, más estrecha abajo
-  const topWidth = AREA.w + 30;  // 30px más arriba (cerca de la barra)
-  const bottomWidth = AREA.w - 20; // 20px menos abajo (cerca del gato)
+  // Paredes en forma de trapecio - más ANCHAS abajo que arriba
+  const topWidth = 300;      // 300px arriba
+  const bottomWidth = 440;   // 440px abajo
   const wallHeight = AREA.h + 100;
-  
-  // Calcular posiciones para paredes inclinadas - centradas
+
+  // Calcular posiciones para paredes inclinadas
   const centerX = AREA.x + AREA.w / 2;
   const topLeftX = centerX - topWidth / 2;
   const topRightX = centerX + topWidth / 2;
   const bottomLeftX = centerX - bottomWidth / 2;
   const bottomRightX = centerX + bottomWidth / 2;
-  
-  // Ángulo de inclinación
-  const leftAngle = Math.atan2(bottomLeftX - topLeftX, wallHeight);
-  const rightAngle = Math.atan2(bottomRightX - topRightX, wallHeight);
-  
+
   const walls = [
-    // Techo (top) - más estrecho, bajado 16px
+    // Techo (top) - estrecho
     Matter.Bodies.rectangle(
-      AREA.x + AREA.w / 2,
+      centerX,
       AREA.y + 10,
       topWidth,
       12,
       wallOpts
     ),
-    // Pared izquierda inclinada
+    // Pared izquierda inclinada hacia afuera - ángulo calculado para 300→440px
     Matter.Bodies.rectangle(
-      (topLeftX + bottomLeftX) / 2, 
-      AREA.y + AREA.h / 2, 
-      12, 
-      wallHeight, 
-      { ...wallOpts, angle: leftAngle }
+      (topLeftX + bottomLeftX) / 2,
+      AREA.y + AREA.h / 2,
+      12,
+      wallHeight,
+      { ...wallOpts, angle: 0.114 }
     ),
-    // Pared derecha inclinada
+    // Pared derecha inclinada hacia afuera - ángulo calculado para 300→440px
     Matter.Bodies.rectangle(
-      (topRightX + bottomRightX) / 2, 
-      AREA.y + AREA.h / 2, 
-      12, 
-      wallHeight, 
-      { ...wallOpts, angle: rightAngle }
+      (topRightX + bottomRightX) / 2,
+      AREA.y + AREA.h / 2,
+      12,
+      wallHeight,
+      { ...wallOpts, angle: -0.114 }
     ),
-    // Suelo (catch) - más ancho
+    // Suelo (catch) - ancho 380px
     Matter.Bodies.rectangle(
-      AREA.x + AREA.w / 2, 
-      AREA.y + AREA.h + 80, 
-      bottomWidth, 
-      12, 
+      centerX,
+      AREA.y + AREA.h + 80,
+      bottomWidth,
+      12,
       wallOpts
     ),
   ];
@@ -112,38 +109,22 @@ export const createPhysicsEngine = (): { engine: Matter.Engine; world: Matter.Wo
 export const createBottle = (x: number, y: number, tierIndex: number): BottleBody => {
   const tier = TIERS[tierIndex];
   
-  // Crear cuerpo compuesto: círculo grande para el cuerpo + círculo pequeño para el cuello
-  const bodyRadius = tier.r; // Radio del cuerpo
-  const neckRadius = tier.r * 0.6; // Radio del cuello (60% del cuerpo)
-  const neckOffset = tier.dh * 0.3; // Distancia desde el centro al cuello
+  // Usar un solo círculo para la física - más estable y sin problemas de colisión
+  // Radio promedio entre el cuerpo y el cuello para colisiones suaves
+  const collisionRadius = tier.r * 0.85;
   
-  // Cuerpo principal (parte inferior/ancha)
-  const bodyCircle = Matter.Bodies.circle(x, y + neckOffset * 0.3, bodyRadius, {
-    label: 'bottle_part',
-    restitution: 0.1,
-    friction: 0.6,
-  });
-  
-  // Cuello (parte superior/estrecha)
-  const neckCircle = Matter.Bodies.circle(x, y - neckOffset, neckRadius, {
-    label: 'bottle_part',
-    restitution: 0.1,
-    friction: 0.6,
-  });
-  
-  // Crear cuerpo compuesto
-  const body = Matter.Body.create({
-    parts: [bodyCircle, neckCircle],
-    restitution: 0.1,           // Menor rebote para estabilidad
-    friction: 0.6,              // Mayor fricción entre botellas
-    frictionStatic: 0.8,        // Mayor fricción estática para que no resbalen
-    frictionAir: 0.025,         // Mayor resistencia al aire para frenar movimiento
+  const body = Matter.Bodies.circle(x, y, collisionRadius, {
+    restitution: 0.2,           // Rebote moderado
+    friction: 0.3,              // Menos fricción para resbalar mejor
+    frictionStatic: 0.4,        // Menos fricción estática
+    frictionAir: 0.01,          // Mínima resistencia al aire
     density: 0.002 + tierIndex * 0.001,
     label: 'bottle',
+    angle: Math.PI,             // Rotar 180 grados al inicio (volteada)
   }) as BottleBody;
   
-  // Añadir amortiguación angular para que giren menos
-  (body as any).angularDamping = 0.15;
+  // Bloquear rotación completamente
+  Matter.Body.setInertia(body, Infinity);
   
   const now = Date.now();
   body.tierIndex = tierIndex;
@@ -156,49 +137,59 @@ export const createBottle = (x: number, y: number, tierIndex: number): BottleBod
 };
 
 export const getBottles = (world: Matter.World): BottleBody[] => {
-  // Obtener todos los bodies y filtrar por los que tienen label 'bottle' (cuerpos compuestos padre)
   const allBodies = Matter.Composite.allBodies(world);
   const bottles: BottleBody[] = [];
-  const seenIds = new Set<number>();
   
   for (const body of allBodies) {
-    // Para cuerpos compuestos, obtener el padre
-    const parent = (body.parent && body.parent !== body) ? body.parent : body;
-    
-    if (parent.label === 'bottle' && !seenIds.has(parent.id)) {
-      seenIds.add(parent.id);
-      if (!(parent as BottleBody).isRemoving) {
-        bottles.push(parent as BottleBody);
-      }
+    if (body.label === 'bottle' && !(body as BottleBody).isRemoving) {
+      bottles.push(body as BottleBody);
     }
   }
   
   return bottles;
 };
 
-/** Verifica y corrige botellas que se salieron de los límites */
+/** Verifica y corrige botellas que se salieron de los límites del trapecio */
 export const clampBottles = (world: Matter.World): void => {
   const bottles = getBottles(world);
+
   bottles.forEach(bottle => {
     const tier = TIERS[bottle.tierIndex];
-    const r = tier ? tier.r : 20;
-    // Para cuerpo compuesto: cuello está arriba, offset ~30% de altura
-    const neckOffset = tier ? tier.dh * 0.3 : 25;
-    const topY = bottle.position.y - neckOffset - r * 0.6; // Posición Y del tope del cuello
-    
-    // Verificar límites X (izquierda y derecha) - usar radio del cuerpo
-    if (bottle.position.x < AREA.x + r) {
-      Matter.Body.setPosition(bottle, { x: AREA.x + r, y: bottle.position.y });
-      Matter.Body.setVelocity(bottle, { x: Math.abs(bottle.velocity.x) * 0.5, y: bottle.velocity.y });
-    } else if (bottle.position.x > AREA.x + AREA.w - r) {
-      Matter.Body.setPosition(bottle, { x: AREA.x + AREA.w - r, y: bottle.position.y });
-      Matter.Body.setVelocity(bottle, { x: -Math.abs(bottle.velocity.x) * 0.5, y: bottle.velocity.y });
+    const r = tier ? tier.r * 0.85 : 17;
+
+    // Obtener límites del trapecio en la posición Y actual
+    const bounds = getTrapezoidBounds(bottle.position.y);
+    const minX = bounds.minX + r;
+    const maxX = bounds.maxX - r;
+
+    // Verificar límites X con empujón hacia adentro
+    if (bottle.position.x < minX) {
+      Matter.Body.setPosition(bottle, { x: minX + 5, y: bottle.position.y });
+      Matter.Body.setVelocity(bottle, { x: 3, y: bottle.velocity.y });
+    } else if (bottle.position.x > maxX) {
+      Matter.Body.setPosition(bottle, { x: maxX - 5, y: bottle.position.y });
+      Matter.Body.setVelocity(bottle, { x: -3, y: bottle.velocity.y });
     }
-    
-    // Verificar límite Y superior (no pueden salir por arriba) - techo bajado 16px
-    // El cuello es lo que más arriba llega
-    if (topY < AREA.y + 16) {
-      const newY = AREA.y + 16 + neckOffset + r * 0.6;
+
+    // Detectar botellas atascadas cerca de las paredes y empujarlas fuertemente hacia el centro
+    const margin = 15;
+    const speed = Math.sqrt(bottle.velocity.x ** 2 + bottle.velocity.y ** 2);
+    const isNearLeftWall = bottle.position.x < minX + margin;
+    const isNearRightWall = bottle.position.x > maxX - margin;
+
+    if (speed < 1.5) {
+      if (isNearLeftWall) {
+        // Empujar fuertemente hacia la derecha
+        Matter.Body.applyForce(bottle, bottle.position, { x: 0.008, y: -0.002 });
+      } else if (isNearRightWall) {
+        // Empujar fuertemente hacia la izquierda
+        Matter.Body.applyForce(bottle, bottle.position, { x: -0.008, y: -0.002 });
+      }
+    }
+
+    // Verificar límite Y superior
+    if (bottle.position.y - r < AREA.y + 16) {
+      const newY = AREA.y + 16 + r;
       Matter.Body.setPosition(bottle, { x: bottle.position.x, y: newY });
       Matter.Body.setVelocity(bottle, { x: bottle.velocity.x, y: Math.abs(bottle.velocity.y) });
     }
@@ -218,20 +209,16 @@ export const checkCollisions = (
     for (let i = 0; i < pairs.length; i++) {
       const { bodyA, bodyB } = pairs[i];
       
-      // Obtener el cuerpo padre (para cuerpos compuestos)
-      const parentA = (bodyA.parent && bodyA.parent !== bodyA) ? bodyA.parent : bodyA;
-      const parentB = (bodyB.parent && bodyB.parent !== bodyB) ? bodyB.parent : bodyB;
-      
-      const bottleA = parentA as BottleBody;
-      const bottleB = parentB as BottleBody;
+      const bottleA = bodyA as BottleBody;
+      const bottleB = bodyB as BottleBody;
       
       // Ignorar paredes
-      if (parentA.label === 'wall' || parentB.label === 'wall') continue;
+      if (bodyA.label === 'wall' || bodyB.label === 'wall') continue;
       if (bottleA.tierIndex == null || bottleB.tierIndex == null) continue;
       
-      // Calcular velocidad relativa para sonido (usar padres)
-      const relV = Math.abs(parentA.velocity.x - parentB.velocity.x) + 
-                   Math.abs(parentA.velocity.y - parentB.velocity.y);
+      // Calcular velocidad relativa para sonido
+      const relV = Math.abs(bodyA.velocity.x - bodyB.velocity.x) + 
+                   Math.abs(bodyA.velocity.y - bodyB.velocity.y);
       if (onClink && relV > 0.5) {
         onClink(relV);
       }
@@ -245,17 +232,16 @@ export const checkCollisions = (
       if ((bottleA.born && now - bottleA.born < MERGE_DELAY) || 
           (bottleB.born && now - bottleB.born < MERGE_DELAY)) continue;
       
-      // Usar IDs de los padres para evitar duplicados
-      const pairId = [parentA.id, parentB.id].sort().join('-');
+      const pairId = [bodyA.id, bodyB.id].sort().join('-');
       if (processedPairs.has(pairId)) continue;
       
       processedPairs.add(pairId);
       bottleA.isRemoving = true;
       bottleB.isRemoving = true;
       
-      // Calcular posición del merge (usar posiciones de los padres)
-      const mx = (parentA.position.x + parentB.position.x) / 2;
-      const my = (parentA.position.y + parentB.position.y) / 2;
+      // Calcular posición del merge
+      const mx = (bodyA.position.x + bodyB.position.x) / 2;
+      const my = (bodyA.position.y + bodyB.position.y) / 2;
       
       if (onMerge) {
         onMerge({
@@ -263,8 +249,8 @@ export const checkCollisions = (
           y: my,
           oldTier: bottleA.tierIndex,
           newTier: bottleA.tierIndex + 1,
-          bodyA: parentA,
-          bodyB: parentB,
+          bodyA: bodyA,
+          bodyB: bodyB,
         });
       }
     }
@@ -283,16 +269,14 @@ export const updatePhysics = (engine: Matter.Engine, dt: number): void => {
   // Forzar sleeping de botellas que están casi quietas para estabilidad
   const allBodies = Matter.Composite.allBodies(engine.world);
   for (const body of allBodies) {
-    const parent = (body.parent && body.parent !== body) ? body.parent : body;
-    if (parent.label === 'bottle' && !parent.isStatic) {
-      const speed = Math.sqrt(parent.velocity.x ** 2 + parent.velocity.y ** 2);
-      const angularSpeed = Math.abs(parent.angularVelocity);
+    if (body.label === 'bottle' && !body.isStatic) {
+      const speed = Math.sqrt(body.velocity.x ** 2 + body.velocity.y ** 2);
       // Si la velocidad es muy baja, forzar sleeping
-      if (speed < 0.1 && angularSpeed < 0.05 && !(parent as any).isSleeping) {
-        const bottle = parent as BottleBody;
-        // Solo dormir si nació hace más de 500ms (para permitir movimiento inicial)
-        if (Date.now() - bottle.born > 500) {
-          Matter.Sleeping.set(parent, true);
+      if (speed < 0.05 && !(body as any).isSleeping) {
+        const bottle = body as BottleBody;
+        // Solo dormir si nació hace más de 800ms (para permitir movimiento inicial)
+        if (Date.now() - bottle.born > 800) {
+          Matter.Sleeping.set(body, true);
         }
       }
     }
@@ -304,15 +288,11 @@ export const removeBody = (world: Matter.World, body: Matter.Body): void => {
 };
 
 export const clearWorld = (world: Matter.World): void => {
-  // Obtener todos los bodies padre únicos con label 'bottle'
   const allBodies = Matter.Composite.allBodies(world);
-  const seenIds = new Set<number>();
   
   for (const body of allBodies) {
-    const parent = (body.parent && body.parent !== body) ? body.parent : body;
-    if (parent.label === 'bottle' && !seenIds.has(parent.id)) {
-      seenIds.add(parent.id);
-      Matter.World.remove(world, parent);
+    if (body.label === 'bottle') {
+      Matter.World.remove(world, body);
     }
   }
 };

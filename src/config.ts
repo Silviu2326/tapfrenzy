@@ -66,6 +66,26 @@ export interface Tier {
   pts: number;
 }
 
+// Función para obtener los límites X del trapecio en una posición Y dada
+// El área es más ESTRECHA arriba (300px) y más ANCHA abajo (440px)
+export const getTrapezoidBounds = (y: number): { minX: number; maxX: number; centerX: number } => {
+  const topWidth = 300;       // 300px arriba
+  const bottomWidth = 440;    // 440px abajo
+  const centerX = AREA.x + AREA.w / 2;
+
+  // Normalizar Y (0 = arriba, 1 = abajo)
+  const t = Math.max(0, Math.min(1, (y - AREA.y) / AREA.h));
+
+  // Interpolar el ancho
+  const currentWidth = topWidth + (bottomWidth - topWidth) * t;
+
+  return {
+    minX: centerX - currentWidth / 2,
+    maxX: centerX + currentWidth / 2,
+    centerX
+  };
+};
+
 // Tiers de cervezas (colisión balanceada - estrecha pero sin superposición)
 export const TIERS: Tier[] = [
   { name: 'Morena',  r: 18, dw: 32, dh: 75, img: morenaImg,  c: '#D4763A', pts: 10 },
