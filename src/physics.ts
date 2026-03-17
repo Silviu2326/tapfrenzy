@@ -21,6 +21,7 @@ export interface BottleBody extends Matter.Body {
   isRemoving: boolean;
   invulnerableUntil: number; // Timestamp hasta cuando es invulnerable
   vulnerableSince: number;   // Timestamp desde cuando es vulnerable en zona de game over
+  isBomb?: boolean;          // Indica si es una bomba
 }
 
 // Singleton para el engine

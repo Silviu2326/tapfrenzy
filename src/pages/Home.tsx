@@ -1,12 +1,16 @@
-import { useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { DailyTip } from '../Tutorial';
 import { TIERS, BOTTLE_IMAGES } from '../config';
+import WeeklyRanking from '../components/WeeklyRanking';
 
-export default function Home() {
-  const navigate = useNavigate();
+interface HomeProps {
+  onStartGame: () => void;
+}
+
+export default function Home({ onStartGame }: HomeProps) {
   const [bestScore, setBestScore] = useState(0);
   const [showDailyTip, setShowDailyTip] = useState(false);
+  const [showRanking, setShowRanking] = useState(false);
   const [time, setTime] = useState(0);
 
   useEffect(() => {
@@ -28,24 +32,17 @@ export default function Home() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleStart = () => {
-    navigate('/game');
-  };
-
-  const handleCandyCrush = () => {
-    navigate('/candy-crush');
-  };
-
   const bottleNames = ['CERVEZA_MORENA', 'CERVEZA_GUAJIRA', 'CERVEZA_SIFRINA', 'CERVEZA_CANDELA', 'CERVEZA_CATIRA', 'CERVEZA_MEDUSA'];
 
   return (
     <div className="game-wrapper">
       <div className="game-container">
-        <div className="main-menu" onClick={handleStart}>
+        <div className="main-menu" onClick={onStartGame}>
           {/* Título */}
           <h1 className="game-title">MR. COOL CAT</h1>
           <h2 className="game-subtitle">CRAFT BEER</h2>
           <p className="game-tagline">TAP FRENZY</p>
+          <p className="game-slogan">Drink. Play. Compete.</p>
           
           {/* Botellas animadas */}
           <div className="animated-bottles">
@@ -83,14 +80,26 @@ export default function Home() {
           </div>
           
           {/* Botón JUGAR */}
-          <button className="play-button" onClick={handleStart}>
+          <button className="play-button" onClick={onStartGame}>
             JUGAR
           </button>
           
-          {/* Botón CANDY CRUSH */}
+          {/* Botón RANKING */}
+          <button 
+            className="ranking-button" 
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowRanking(true);
+            }}
+          >
+            🏆 RANKING
+          </button>
+          
+          {/* Botón CANDY CRUSH - Oculto temporalmente
           <button className="candy-crush-button" onClick={handleCandyCrush}>
             CANDY CRUSH
           </button>
+          */}
           
           {bestScore > 0 && (
             <p className="best-score-text">
@@ -105,6 +114,14 @@ export default function Home() {
         visible={showDailyTip} 
         onClose={() => setShowDailyTip(false)}
       />
+      
+      {/* Ranking */}
+      {showRanking && (
+        <WeeklyRanking
+          onClose={() => setShowRanking(false)}
+          onPlayAgain={onStartGame}
+        />
+      )}
     </div>
   );
 }

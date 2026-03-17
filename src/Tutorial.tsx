@@ -53,6 +53,7 @@ const TUTORIAL_STEPS = [
 
 // Consejos del día (seleccionados aleatoriamente)
 const DAILY_TIPS = [
+  // Consejos de estrategia
   { icon: '🎯', text: 'Apunta al centro para mejor control' },
   { icon: '⚡', text: 'Los combos x5 dan el máximo de puntos' },
   { icon: '🧊', text: 'Deja que las botellas se asienten antes de lanzar' },
@@ -77,6 +78,25 @@ const DAILY_TIPS = [
   { icon: '🏃', text: 'Las fusiones rápidas mantienen el ritmo' },
   { icon: '🧩', text: 'Encaja las piezas como un tetris maestro' },
   { icon: '📊', text: 'Más altura = más riesgo, más recompensa' },
+  // Nuevos consejos de estrategia avanzada
+  { icon: '⬅️', text: 'Las botellas pequeñas son mejor en los bordes' },
+  { icon: '⬇️', text: 'No dejes huecos grandes en la base' },
+  { icon: '🎳', text: 'Una botella grande puede empujar todo' },
+  { icon: '⏳', text: 'Espera a que termine una fusión antes de lanzar' },
+  { icon: '📍', text: 'Coloca las medianas para separar pequeñas' },
+  // Curiosidades sobre las cervezas de El Gato Cool
+  { icon: '🍺', text: 'La Morena es nuestra cerveza más popular' },
+  { icon: '🌶️', text: 'La Candela tiene un toque picante único' },
+  { icon: '🏖️', text: 'La Guajira evoca las playas caribeñas' },
+  { icon: '🎩', text: 'La Sifrina es elegante y sofisticada' },
+  { icon: '🌟', text: 'La Catira brilla con luz propia' },
+  { icon: '🐍', text: 'La Medusa petrifica con su sabor' },
+  // Frases motivacionales
+  { icon: '🔥', text: '¡Hoy es tu día de romper récords!' },
+  { icon: '⭐', text: 'Un Barril te espera, ve a por él' },
+  { icon: '🍻', text: 'Cada partida te acerca a la maestría' },
+  { icon: '💯', text: 'Tú puedes llegar al Top 10' },
+  { icon: '🎖️', text: 'Los mejores cerveceros nunca se rinden' },
 ];
 
 // ==========================================

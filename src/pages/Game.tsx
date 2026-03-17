@@ -1,5 +1,4 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import Matter from 'matter-js';
 
 import {
@@ -40,9 +39,29 @@ import {
   stopBackgroundMusic,
   vibrateLight,
   vibrateMedium,
-  vibrateHeavy,
   vibrateError,
+  vibratePowerUp,
+  vibrateCombo,
+  vibrateTierHigh,
+  vibrateCelebrate,
 } from '../sounds';
+import WeeklyRanking from '../components/WeeklyRanking';
+import PowerBar from '../components/PowerBar';
+import GameModeSelector from '../components/GameModeSelector';
+import OptimizedParticles from '../components/OptimizedParticles';
+import ShockwaveEffect from '../components/ShockwaveEffect';
+import FlashEffect from '../components/FlashEffect';
+import ConfettiSystem from '../components/ConfettiSystem';
+import DangerWarning from '../components/DangerWarning';
+import FallingTrail from '../components/FallingTrail';
+import EnhancedHUD from '../components/EnhancedHUD';
+import PauseMenu from '../components/PauseMenu';
+import StatsScreen from '../components/StatsScreen';
+import ProfileSetup from '../components/ProfileSetup';
+import { PowerType, PowerState, INITIAL_POWERS, canUsePower } from '../types/powers';
+import { GameMode, formatTime, calculateTimeBonus } from '../types/gameModes';
+import { PlayerProfile, PlayerStats, calculateLevel } from '../types/player';
+import { particlePool, autoAdjustQuality } from '../systems/ParticleSystem';
 
 interface Particle {
   id: number;
@@ -69,8 +88,11 @@ interface FloatingText {
   vy: number;
 }
 
-export default function Game() {
-  const navigate = useNavigate();
+interface GameProps {
+  onBackToMenu: () => void;
+}
+
+export default function Game({ onBackToMenu }: GameProps) {
   
   // Referencias
   const engineRef = useRef<Matter.Engine | null>(null);
@@ -82,6 +104,11 @@ export default function Game() {
   const dangerZoneEntryRef = useRef<Map<number, number>>(new Map());
   const gameAreaRef = useRef<HTMLDivElement>(null);
   const particleContainerRef = useRef<HTMLDivElement>(null);
+  const powersRef = useRef<PowerState>({
+    powers: { ...INITIAL_POWERS },
+    activePower: null,
+    lastUsed: { swap: 0, slowmo: 0, bomb: 0 },
+  });
   
   // Estados del juego
   const [gameState, setGameState] = useState<'play' | 'over'>('play');
@@ -95,6 +122,8 @@ export default function Game() {
   const [comboTime, setComboTime] = useState(0);
   const [maxTier, setMaxTier] = useState(0);
   const [dropX, setDropX] = useState(GAME_WIDTH / 2);
+  const dropXRef = useRef(GAME_WIDTH / 2);
+  const rafRef = useRef<number | null>(null);
   const [canDrop, setCanDrop] = useState(true);
   const [lastDrop, setLastDrop] = useState(0);
   const [isNewRecord, setIsNewRecord] = useState(false);
@@ -103,9 +132,98 @@ export default function Game() {
   const [particles, setParticles] = useState<Particle[]>([]);
   const [floatingTexts, setFloatingTexts] = useState<FloatingText[]>([]);
   const [shake, setShake] = useState({ x: 0, y: 0 });
+  const [showRanking, setShowRanking] = useState(false);
+  
+  // Estados para sistema de poderes mobile
+  const [powers, setPowers] = useState<PowerState>({
+    powers: { ...INITIAL_POWERS },
+    activePower: null,
+    lastUsed: {
+      swap: 0,
+      slowmo: 0,
+      bomb: 0,
+    },
+  });
+  // const [isSelectingTarget, setIsSelectingTarget] = useState(false);
+  const [slowMoActive, setSlowMoActive] = useState(false);
+  
+  // Estados para modos de juego
+  const [gameMode, setGameMode] = useState<GameMode>('classic');
+  const gameModeRef = useRef<GameMode>('classic');
+  useEffect(() => {
+    gameModeRef.current = gameMode;
+  }, [gameMode]);
+  const [showModeSelector, setShowModeSelector] = useState(false);
+  const [quickModeTime, setQuickModeTime] = useState(90);
+  const [isQuickModeActive, setIsQuickModeActive] = useState(false);
+  const isQuickModeActiveRef = useRef(false);
+  useEffect(() => {
+    isQuickModeActiveRef.current = isQuickModeActive;
+  }, [isQuickModeActive]);
+  
+  // Estados para efectos visuales optimizados
+  const [particleTrigger, setParticleTrigger] = useState(0);
+  const [lastMergePos, setLastMergePos] = useState({ x: 0, y: 0, tier: 0 });
+  const [backgroundMode, setBackgroundMode] = useState<'normal' | 'combo' | 'danger' | 'record'>('normal');
+  
+  // Estados para nuevos efectos visuales
+  const [shockwaves, setShockwaves] = useState<Array<{ x: number; y: number; trigger: number; intensity: 'low' | 'medium' | 'high' }>>([]);
+  const [flashTrigger, setFlashTrigger] = useState(0);
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [showDangerWarning, setShowDangerWarning] = useState(false);
+  const [trailActive, setTrailActive] = useState(false);
+  const [trailPos, setTrailPos] = useState({ x: 0, y: 0 });
+  
+  // Estados para UX/UI mobile
+  const [isPaused, setIsPaused] = useState(false);
+  const [showStats, setShowStats] = useState(false);
+  const [showProfileSetup, setShowProfileSetup] = useState(false);
+  const [gameTime, setGameTime] = useState(0);
+  const [merges, setMerges] = useState(0);
+  const [sessionMaxCombo, setSessionMaxCombo] = useState(0);
+  
+  // Perfil y estadísticas del jugador
+  const [playerProfile, setPlayerProfile] = useState<PlayerProfile>({
+    userId: 'user-' + Date.now(),
+    nickname: 'Cervecero',
+    avatar: '🍺',
+    level: 1,
+    xp: 0,
+    title: 'Novato Cervecero',
+  });
+  
+  const [playerStats, setPlayerStats] = useState<PlayerStats>({
+    totalGames: 0,
+    totalScore: 0,
+    bestScore: 0,
+    barrelsCreated: 0,
+    totalMerges: 0,
+    maxCombo: 0,
+    timePlayed: 0,
+    lastPlayed: Date.now(),
+    gamesToday: 0,
+    currentStreak: 0,
+  });
   
   // Calcular escala para responsive
   const [scale, setScale] = useState(1);
+  
+  // Inicializar calidad de partículas
+  useEffect(() => {
+    autoAdjustQuality().then(quality => {
+      particlePool.setQuality(quality);
+    });
+  }, []);
+  
+  // Verificar desbloqueo de poderes al cambiar score
+  useEffect(() => {
+    checkPowerUnlocks(score);
+  }, [score]);
+  
+  // Actualizar referencia de poderes cuando cambie el estado
+  useEffect(() => {
+    powersRef.current = powers;
+  }, [powers]);
   
   useEffect(() => {
     const updateScale = () => {
@@ -126,20 +244,16 @@ export default function Game() {
     const { engine, world } = createPhysicsEngine();
     engineRef.current = engine;
     worldRef.current = world;
-    
+
     initAudio();
-    
+
     // Cargar mejor puntuación
     const saved = localStorage.getItem('mcc_best');
     if (saved) setBestScore(parseInt(saved));
-    
-    // Inicializar tiers
-    setCurrentTier(getRandomTier());
-    setNextTier(getRandomTier());
-    
-    playStart();
-    playBackgroundMusic();
-    
+
+    // Mostrar selector de modo al inicio
+    setShowModeSelector(true);
+
     return () => {
       if (gameLoopRef.current) {
         cancelAnimationFrame(gameLoopRef.current);
@@ -176,6 +290,33 @@ export default function Game() {
     setScore(prev => prev + totalPts);
     if (newTier > maxTier) setMaxTier(newTier);
     
+    // Actualizar estadísticas de sesión
+    setMerges(prev => prev + 1);
+    if (newCombo > sessionMaxCombo) setSessionMaxCombo(newCombo);
+    
+    // Efectos visuales optimizados según tier
+    setLastMergePos({ x, y, tier: newTier });
+    setParticleTrigger(prev => prev + 1);
+    
+    // Background dinámico según combo
+    if (newCombo >= 3) {
+      setBackgroundMode('combo');
+      setTimeout(() => setBackgroundMode('normal'), 500);
+    }
+    
+    // Onda de choque para fusiones de tier medio/alto
+    if (newTier >= 3) {
+      const intensity: 'low' | 'medium' | 'high' = newTier >= 6 ? 'high' : 'medium';
+      setShockwaves(prev => [...prev, { x, y, trigger: Date.now(), intensity }]);
+      setTimeout(() => setShockwaves(prev => prev.slice(1)), 1000);
+    }
+    
+    // Destello blanco para tier alto
+    if (newTier >= 6) {
+      setFlashTrigger(prev => prev + 1);
+    }
+    
+    // Partículas clásicas (mantener compatibilidad)
     const particleColor = newTier >= 6 ? '#FFD700' : TIERS[newTier].c;
     const particleCount = newTier >= 6 ? 8 : 12 + newTier * 2;
     spawnParticles(x, y, particleColor, particleCount);
@@ -187,9 +328,23 @@ export default function Game() {
     
     playMerge(newTier);
     
-    if (newTier >= 6) vibrateHeavy();
-    else if (newTier >= 3) vibrateMedium();
-    else vibrateLight();
+    // Añadir tiempo en modo rápido
+    if (gameModeRef.current === 'quick') {
+      const timeBonus = calculateTimeBonus(newTier);
+      setQuickModeTime(prev => prev + timeBonus);
+      addFloatingText(x, y - 40, `+${timeBonus}s`, '#00FF00');
+    }
+    
+    // Vibración según tier y combo
+    if (newTier >= 6) {
+      vibrateTierHigh();
+    } else if (newCombo >= 5) {
+      vibrateCombo(newCombo);
+    } else if (newTier >= 3) {
+      vibrateMedium();
+    } else {
+      vibrateLight();
+    }
   }, [combo, maxTier]);
 
   const handleClink = useCallback((force: number) => {
@@ -213,7 +368,9 @@ export default function Game() {
       lastTimeRef.current = timestamp;
       
       if (engineRef.current) {
-        updatePhysics(engineRef.current, dt);
+        // Aplicar slow motion si está activo
+        const timeScale = slowMoActive ? 0.3 : 1;
+        updatePhysics(engineRef.current, dt * timeScale);
       }
       
       if (worldRef.current) {
@@ -230,6 +387,25 @@ export default function Game() {
       }
       
       setDScore(prev => prev + (score - prev) * 0.15);
+      
+      // Timer para modo rápido (respeta el timeScale del slowmo)
+      if (gameModeRef.current === 'quick' && isQuickModeActiveRef.current) {
+        const timeScale = slowMoActive ? 0.3 : 1;
+        setQuickModeTime(prev => {
+          const newTime = prev - (dt * timeScale) / 1000;
+          if (newTime <= 0) {
+            // Tiempo agotado - Game Over
+            doGameOver();
+            return 0;
+          }
+          return newTime;
+        });
+      }
+      
+      // Contador de tiempo de juego general
+      if (!isPaused) {
+        setGameTime(prev => prev + dt / 1000);
+      }
       
       const currentBottles = Array.from(bottlesMapRef.current.values());
       const now = Date.now();
@@ -255,6 +431,16 @@ export default function Game() {
             dangerZoneEntryRef.current.delete(bottle.id);
           }
         }
+        
+        // 💣 Verificar si una bomba ha tocado el fondo (velocidad baja después de 500ms)
+        if (bottle.isBomb && !bottle.isRemoving && now - bottle.born > 500) {
+          const speed = Math.sqrt(bottle.velocity.x ** 2 + bottle.velocity.y ** 2);
+          if (speed < 0.5) {
+            // La bomba tocó el fondo, explotarla
+            bottle.isRemoving = true; // Marcar para evitar explosiones múltiples
+            explodeBomb(bottle);
+          }
+        }
       });
 
       const newIsDanger = currentBottles.some(b => {
@@ -265,7 +451,13 @@ export default function Game() {
       if (newIsDanger !== isDangerRef.current) {
         isDangerRef.current = newIsDanger;
         setIsDangerActive(newIsDanger);
-        if (newIsDanger) shakeScreen(4);
+        setShowDangerWarning(newIsDanger);
+        if (newIsDanger) {
+          shakeScreen(4);
+          setBackgroundMode('danger');
+        } else {
+          setBackgroundMode('normal');
+        }
       }
 
       if (checkGameOver()) {
@@ -288,6 +480,11 @@ export default function Game() {
   }, [gameState, score, comboTime]);
 
   const checkGameOver = () => {
+    // Modo Zen: No hay game over por peligro
+    if (gameModeRef.current === 'zen') {
+      return false;
+    }
+    
     const now = Date.now();
     
     for (const [, entryTime] of dangerZoneEntryRef.current.entries()) {
@@ -313,12 +510,51 @@ export default function Game() {
     vibrateError();
     stopBackgroundMusic();
 
+    // Guardar estadísticas
+    setPlayerStats(prev => {
+      const now = Date.now();
+      const isNewDay = now - prev.lastPlayed > 24 * 60 * 60 * 1000;
+      const newStreak = isNewDay ? prev.currentStreak + 1 : prev.currentStreak;
+      
+      return {
+        ...prev,
+        totalGames: prev.totalGames + 1,
+        totalScore: prev.totalScore + score,
+        bestScore: Math.max(prev.bestScore, score),
+        barrelsCreated: prev.barrelsCreated + (maxTier >= 8 ? 1 : 0),
+        totalMerges: prev.totalMerges + merges,
+        maxCombo: Math.max(prev.maxCombo, sessionMaxCombo),
+        timePlayed: prev.timePlayed + Math.floor(gameTime),
+        lastPlayed: now,
+        gamesToday: isNewDay ? 1 : prev.gamesToday + 1,
+        currentStreak: newStreak,
+      };
+    });
+
+    // Actualizar XP del jugador
+    const xpGained = Math.floor(score / 100) + (merges * 10) + (sessionMaxCombo * 50);
+    setPlayerProfile(prev => {
+      const newXP = prev.xp + xpGained;
+      const newLevel = calculateLevel(newXP);
+      return {
+        ...prev,
+        xp: newXP,
+        level: newLevel.level,
+        title: newLevel.title,
+      };
+    });
+
     if (score > bestScore) {
       setBestScore(score);
       setIsNewRecord(true);
       localStorage.setItem('mcc_best', score.toString());
+      vibrateCelebrate();
+      setBackgroundMode('record');
+      setShowConfetti(true);
+      setTimeout(() => setShowConfetti(false), 5000);
     } else {
       setIsNewRecord(false);
+      setBackgroundMode('normal');
     }
     
     if (gameLoopRef.current) {
@@ -346,14 +582,61 @@ export default function Game() {
     isDangerRef.current = false;
     setGameState('play');
     lastTimeRef.current = 0;
+    
+    // Reset quick mode timer
+    if (gameModeRef.current === 'quick') {
+      setQuickModeTime(90);
+      setIsQuickModeActive(true);
+    }
+    
+    playStart();
+    playBackgroundMusic();
+  };
+
+  const selectGameMode = (mode: GameMode) => {
+    setGameMode(mode);
+    setShowModeSelector(false);
+    
+    // Reset game state for new mode
+    if (worldRef.current) {
+      clearWorld(worldRef.current);
+    }
+    setScore(0);
+    setDScore(0);
+    setCombo(0);
+    setComboTime(0);
+    setMaxTier(0);
+    setCurrentTier(getRandomTier());
+    setNextTier(getRandomTier());
+    bottlesMapRef.current.clear();
+    dangerZoneEntryRef.current.clear();
+    setParticles([]);
+    setFloatingTexts([]);
+    setBottles([]);
+    setIsDangerActive(false);
+    isDangerRef.current = false;
+    
+    // Setup mode-specific state
+    if (mode === 'quick') {
+      setQuickModeTime(90);
+      setIsQuickModeActive(true);
+    } else {
+      setIsQuickModeActive(false);
+    }
+    
+    setGameState('play');
+    lastTimeRef.current = 0;
     playStart();
     playBackgroundMusic();
   };
 
   const handleMenu = () => {
-    navigate('/menu');
+    onBackToMenu();
   };
   
+  // Flag para indicar si la próxima botella es una bomba
+  const [isNextBomb, setIsNextBomb] = useState(false);
+
   const dropBottle = (x: number) => {
     if (!canDrop || Date.now() - lastDrop < DROP_CD || !worldRef.current) return;
 
@@ -368,6 +651,13 @@ export default function Game() {
 
     const body = createBottle(clampedX, DROP_Y, currentTier);
     setVelocity(body, { x: 0, y: -8 });
+    
+    // 💣 Si es una bomba, marcarla
+    if (isNextBomb) {
+      (body as BottleBody).isBomb = true;
+      setIsNextBomb(false);
+    }
+    
     Matter.World.add(worldRef.current, body);
     bottlesMapRef.current.set(body.id, body);
     
@@ -382,6 +672,206 @@ export default function Game() {
     setTimeout(() => {
       setCanDrop(true);
     }, DROP_CD);
+  };
+  
+  // Función para explotar la bomba
+  const explodeBomb = (bombBody: BottleBody) => {
+    if (!worldRef.current) return;
+    
+    const explosionRadius = 120;
+    const explosionX = bombBody.position.x;
+    const explosionY = bombBody.position.y;
+    
+    const bottlesToRemove: BottleBody[] = [];
+    let totalPoints = 0;
+    
+    // Encontrar botellas dentro del radio (incluyendo la bomba misma)
+    bottlesMapRef.current.forEach((b) => {
+      const dx = b.position.x - explosionX;
+      const dy = b.position.y - explosionY;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      if (distance <= explosionRadius) {
+        bottlesToRemove.push(b);
+        totalPoints += TIERS[b.tierIndex].pts * 2;
+      }
+    });
+    
+    // Remover botellas
+    bottlesToRemove.forEach((b) => {
+      removeBody(worldRef.current!, b);
+      bottlesMapRef.current.delete(b.id);
+      spawnParticles(b.position.x, b.position.y, TIERS[b.tierIndex].c, 8);
+    });
+    
+    // Efectos visuales
+    setShockwaves(prev => [...prev, { x: explosionX, y: explosionY, trigger: Date.now(), intensity: 'high' }]);
+    setTimeout(() => setShockwaves(prev => prev.slice(1)), 1000);
+    setFlashTrigger(prev => prev + 1);
+    spawnParticles(explosionX, explosionY, '#FF6B00', 20);
+    spawnStars(explosionX, explosionY);
+    
+    vibrateMedium();
+    shakeScreen(6);
+    
+    setScore(prev => prev + totalPoints);
+    addFloatingText(explosionX, explosionY - 30, `💥 BOOM! +${totalPoints}`, '#FF6B00');
+    
+    if (bottlesToRemove.length > 1) {
+      addFloatingText(explosionX, explosionY - 60, `${bottlesToRemove.length} eliminadas`, '#FFD700');
+    }
+  };
+
+  // ==========================================
+  // SISTEMA DE PODERES MOBILE
+  // ==========================================
+
+  const activatePower = (type: PowerType) => {
+    const power = powers.powers[type];
+    const lastUsedTime = powers.lastUsed[type];
+    
+    if (!canUsePower(power, lastUsedTime)) return;
+
+    vibratePowerUp();
+
+    switch (type) {
+      case 'swap':
+        // Cambiar botella actual por otra aleatoria
+        const newTier = getRandomTier();
+        setCurrentTier(newTier);
+        setPowers(prev => ({
+          ...prev,
+          powers: {
+            ...prev.powers,
+            swap: {
+              ...prev.powers.swap,
+              uses: prev.powers.swap.uses - 1,
+            },
+          },
+          lastUsed: {
+            ...prev.lastUsed,
+            swap: Date.now(),
+          },
+          activePower: null,
+        }));
+        addFloatingText(GAME_WIDTH / 2, GAME_HEIGHT / 2, '🔄 Swap!', '#FF6B00');
+        break;
+        
+      case 'slowmo':
+        // Activar tiempo lento por 3 segundos
+        setSlowMoActive(true);
+        setPowers(prev => ({
+          ...prev,
+          powers: {
+            ...prev.powers,
+            slowmo: {
+              ...prev.powers.slowmo,
+              uses: prev.powers.slowmo.uses - 1,
+            },
+          },
+          lastUsed: {
+            ...prev.lastUsed,
+            slowmo: Date.now(),
+          },
+          activePower: null,
+        }));
+        addFloatingText(GAME_WIDTH / 2, GAME_HEIGHT / 2, '⏱️ Tiempo Lento!', '#3498DB');
+        
+        setTimeout(() => {
+          setSlowMoActive(false);
+        }, 3000);
+        break;
+        
+      case 'bomb':
+        // 💣 La próxima botella será una bomba
+        setIsNextBomb(true);
+        setPowers(prev => ({
+          ...prev,
+          powers: {
+            ...prev.powers,
+            bomb: {
+              ...prev.powers.bomb,
+              uses: prev.powers.bomb.uses - 1,
+            },
+          },
+          lastUsed: {
+            ...prev.lastUsed,
+            bomb: Date.now(),
+          },
+        }));
+        addFloatingText(GAME_WIDTH / 2, GAME_HEIGHT / 2, '💣 ¡Bomba lista!', '#FF6B00');
+        break;
+    }
+  };
+
+  // Ya no se usa - la bomba ahora se activa directamente al soltar
+  // const usePowerOnBottle = (bottleId: number) => {
+  //   // Usar la referencia para evitar problemas de closure
+  //   const currentPowers = powersRef.current;
+  //   
+  //   if (!currentPowers.activePower || !worldRef.current) {
+  //     console.log('No active power or world not ready');
+  //     return;
+  //   }
+  //
+  //   const bottle = bottlesMapRef.current.get(bottleId);
+  //   if (!bottle) {
+  //     console.log('Bottle not found:', bottleId);
+  //     return;
+  //   }
+  //
+  //   console.log('Using power:', currentPowers.activePower, 'on bottle:', bottleId);
+  //
+  //   // La bomba ahora se maneja en dropBottle, no aquí
+  // };
+
+  // Ya no se usa - la bomba ahora se activa directamente
+  // const cancelPowerSelection = () => {
+  //   setIsSelectingTarget(false);
+  //   setPowers(prev => ({
+  //     ...prev,
+  //     activePower: null,
+  //   }));
+  // };
+
+  // Ganar usos de poderes al hacer puntos
+  const checkPowerUnlocks = (currentScore: number) => {
+    setPowers(prev => {
+      const newPowers = { ...prev.powers };
+      let updated = false;
+
+      // Cada 3000 pts = 1 uso de swap
+      const swapUses = Math.floor(currentScore / 3000) + 5;
+      if (swapUses > newPowers.swap.uses) {
+        newPowers.swap = {
+          ...newPowers.swap,
+          uses: swapUses,
+        };
+        updated = true;
+      }
+
+      // Desbloquear slowmo a 5000 pts
+      if (currentScore >= 5000 && !newPowers.slowmo.unlocked) {
+        newPowers.slowmo = {
+          ...newPowers.slowmo,
+          unlocked: true,
+          uses: 2,
+        };
+        updated = true;
+      }
+
+      // Desbloquear bomba a 10000 pts
+      if (currentScore >= 10000 && !newPowers.bomb.unlocked) {
+        newPowers.bomb = {
+          ...newPowers.bomb,
+          unlocked: true,
+          uses: 1,
+        };
+        updated = true;
+      }
+
+      return updated ? { ...prev, powers: newPowers } : prev;
+    });
   };
 
   const spawnParticles = (x: number, y: number, color: string, count: number) => {
@@ -452,7 +942,20 @@ export default function Game() {
     if (gameState !== 'play' || !gameAreaRef.current) return;
     const rect = gameAreaRef.current.getBoundingClientRect();
     const gameX = (e.clientX - rect.left) / scale;
-    setDropX(Math.max(AREA.x, Math.min(AREA.x + AREA.w, gameX)));
+    const newX = Math.max(AREA.x, Math.min(AREA.x + AREA.w, gameX));
+    
+    // Actualizar ref inmediatamente para respuesta instantánea
+    dropXRef.current = newX;
+    
+    // Usar RAF para actualizar estado solo en el próximo frame
+    if (rafRef.current === null) {
+      rafRef.current = requestAnimationFrame(() => {
+        setDropX(dropXRef.current);
+        setTrailPos({ x: dropXRef.current, y: DROP_Y });
+        setTrailActive(true);
+        rafRef.current = null;
+      });
+    }
   };
 
   const handleClick = () => {
@@ -465,6 +968,7 @@ export default function Game() {
     if (gameState === 'play' && canDrop) {
       dropBottle(dropX * scale);
     }
+    setTrailActive(false);
   };
 
   useEffect(() => {
@@ -552,7 +1056,11 @@ export default function Game() {
             const rect = gameAreaRef.current?.getBoundingClientRect();
             if (rect) {
               const x = ((touch.clientX - rect.left) / rect.width) * GAME_WIDTH;
-              setDropX(Math.max(AREA.x, Math.min(AREA.x + AREA.w, x)));
+              const newX = Math.max(AREA.x, Math.min(AREA.x + AREA.w, x));
+              dropXRef.current = newX;
+              setDropX(newX);
+              setTrailPos({ x: newX, y: DROP_Y });
+              setTrailActive(true);
             }
           }}
           onTouchMove={(e) => {
@@ -561,34 +1069,65 @@ export default function Game() {
             const rect = gameAreaRef.current?.getBoundingClientRect();
             if (rect) {
               const x = ((touch.clientX - rect.left) / rect.width) * GAME_WIDTH;
-              setDropX(Math.max(AREA.x, Math.min(AREA.x + AREA.w, x)));
+              const newX = Math.max(AREA.x, Math.min(AREA.x + AREA.w, x));
+              dropXRef.current = newX;
+              
+              if (rafRef.current === null) {
+                rafRef.current = requestAnimationFrame(() => {
+                  setDropX(dropXRef.current);
+                  setTrailPos({ x: dropXRef.current, y: DROP_Y });
+                  setTrailActive(true);
+                  rafRef.current = null;
+                });
+              }
             }
           }}
           onTouchEnd={() => {
             dropBottle(dropX * scale);
+            setTrailActive(false);
           }}
         >
-          <div 
-            className="game-over-line"
-            style={{ top: GAME_OVER_Y }}
-          />
-          
-          <div 
-            className={`danger-line ${isDangerActive ? 'active' : ''}`}
-            style={{ top: DANGER_Y, transform: 'rotate(180deg)' }}
-          />
+          {/* Líneas de peligro - ocultas en modo Zen */}
+          {gameModeRef.current !== 'zen' && (
+            <>
+              <div 
+                className="game-over-line"
+                style={{ top: GAME_OVER_Y }}
+              />
+              
+              <div 
+                className={`danger-line ${isDangerActive ? 'active' : ''}`}
+                style={{ top: DANGER_Y, transform: 'rotate(180deg)' }}
+              />
+            </>
+          )}
           
           {bottles.map((bottle) => (
             <BottleComponent
               key={bottle.id}
               body={bottle}
               tierIndex={bottle.tierIndex}
+              isSelectable={false}
+              isSelected={false}
+              onSelect={() => {}}
             />
           ))}
           
           <div className="bottle-preview" style={{ ...getPreviewStyle(), transform: 'rotate(180deg)' }}>
             <div className="guide-line" style={{ top: -DROP_Y + AREA.y, transform: 'translateX(-50%) rotate(180deg)' }} />
             <img src={TIERS[currentTier].img} alt="" />
+            {isNextBomb && (
+              <div className="bomb-indicator" style={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                fontSize: 'clamp(40px, 12vw, 60px)',
+                animation: 'pulse 0.5s infinite alternate',
+                zIndex: 10,
+                textShadow: '0 0 20px #FF0000, 0 0 40px #FF6B00',
+              }}>💣</div>
+            )}
           </div>
           
           <div className="particle-layer" ref={particleContainerRef}>
@@ -630,6 +1169,43 @@ export default function Game() {
             ))}
           </div>
           
+          {/* Partículas optimizadas según tier */}
+          <OptimizedParticles
+            trigger={particleTrigger}
+            x={lastMergePos.x}
+            y={lastMergePos.y}
+            tier={lastMergePos.tier}
+            type="merge"
+          />
+          
+          {/* Ghost preview de la botella cayendo */}
+          {gameState === 'play' && (
+            <div
+              className="ghost-preview"
+              style={{
+                left: dropX - TIERS[currentTier].dw / 2,
+                top: DROP_Y - TIERS[currentTier].dh / 2,
+                width: TIERS[currentTier].dw,
+                height: TIERS[currentTier].dh,
+                transform: 'rotate(180deg)',
+              }}
+            >
+              <img 
+                src={TIERS[currentTier].img} 
+                alt="" 
+                style={{ 
+                  width: '100%', 
+                  height: '100%', 
+                  opacity: 0.3,
+                  filter: 'grayscale(50%)'
+                }} 
+              />
+            </div>
+          )}
+          
+          {/* Background dinámico */}
+          <div className={`dynamic-background ${backgroundMode}-mode`} />
+          
           <div className="next-bottle">
             <span className="next-label">NEXT</span>
             <img src={TIERS[nextTier].img} alt={TIERS[nextTier].name} style={{ transform: 'rotate(180deg)' }} />
@@ -652,6 +1228,57 @@ export default function Game() {
               </span>
             )}
           </div>
+          
+          {/* Timer para modo rápido */}
+          {gameMode === 'quick' && gameState === 'play' && (
+            <div className={`quick-mode-timer ${quickModeTime < 15 ? 'danger' : ''}`}>
+              <span className="timer-icon">⏱️</span>
+              <span className="timer-value">{formatTime(Math.floor(quickModeTime))}</span>
+            </div>
+          )}
+          
+          {/* Enhanced HUD */}
+          <EnhancedHUD
+            score={score}
+            bestScore={bestScore}
+            combo={combo}
+            comboTime={comboTime}
+            onPause={() => setIsPaused(true)}
+            soundOn={soundOn}
+            onToggleSound={() => {
+              const newState = toggleSound();
+              setSoundOn(newState);
+            }}
+          />
+
+          {/* Botón de estadísticas */}
+          <button 
+            className="stats-button"
+            onClick={() => setShowStats(true)}
+            style={{
+              position: 'absolute',
+              right: '2%',
+              top: 'clamp(115px, 30vw, 135px)',
+              zIndex: 20,
+              background: 'rgba(30, 15, 5, 0.8)',
+              border: '1px solid rgba(255, 107, 0, 0.4)',
+              borderRadius: '20px',
+              padding: '8px 14px',
+              color: '#FF8C33',
+              fontSize: 'clamp(11px, 3vw, 13px)',
+              cursor: 'pointer',
+            }}
+          >
+            📊 Stats
+          </button>
+          
+          {/* Selector de modo de juego - solo aparece al inicio */}
+          {showModeSelector && (
+            <GameModeSelector
+              currentMode={gameMode}
+              onSelectMode={selectGameMode}
+            />
+          )}
           
           {gameState === 'over' && (
             <div className="game-over-overlay">
@@ -678,30 +1305,126 @@ export default function Game() {
                 </span>
 
                 {isNewRecord && (
-                  <span className="new-record">★ NUEVO RECORD ★</span>
+                  <>
+                    <span className="new-record">★ NUEVO RECORD ★</span>
+                    <span className="game-slogan-gameover">Drink. Play. Compete.</span>
+                    <ConfettiEffect />
+                  </>
                 )}
 
                 <button className="restart-button" onClick={handleRestart}>
                   JUGAR DE NUEVO
                 </button>
-                
+
+                <button className="menu-button" onClick={() => setShowRanking(true)}>
+                  🏆 VER RANKING
+                </button>
+
                 <button className="menu-button" onClick={handleMenu}>
                   MENÚ
                 </button>
               </div>
             </div>
           )}
+
+          {showRanking && (
+            <WeeklyRanking
+              currentScore={score}
+              onClose={() => setShowRanking(false)}
+              onPlayAgain={handleRestart}
+            />
+          )}
         </div>
+
+        {/* Barra de poderes mobile - oculta durante selección de modo o game over */}
+        {!showModeSelector && gameState !== 'over' && (
+          <PowerBar
+            powers={powers.powers}
+            lastUsed={powers.lastUsed}
+            activePower={powers.activePower}
+            onActivatePower={activatePower}
+            isSelectingTarget={false}
+            gameMode={gameMode}
+          />
+        )}
+
+
+
+        {/* Línea guía visual */}
+        {gameState === 'play' && (
+          <div
+            className="drag-guide-line"
+            style={{
+              left: `${dropX - 1}px`,
+              top: `${DROP_Y - 100}px`,
+            }}
+          />
+        )}
         
-        <button
-          className="sound-button-game"
-          onClick={() => {
-            const newState = toggleSound();
-            setSoundOn(newState);
-          }}
-        >
-          {soundOn ? '🔊' : '🔇'}
-        </button>
+        {/* Ondas de choque */}
+        {shockwaves.map((wave, index) => (
+          <ShockwaveEffect
+            key={`${wave.trigger}-${index}`}
+            x={wave.x}
+            y={wave.y}
+            trigger={wave.trigger}
+            intensity={wave.intensity}
+          />
+        ))}
+        
+        {/* Destello blanco para fusiones épicas */}
+        <FlashEffect trigger={flashTrigger} duration={300} intensity="high" />
+        
+        {/* Confeti para nuevo record */}
+        <ConfettiSystem active={showConfetti} count={60} duration={5000} />
+        
+        {/* Mensaje de peligro */}
+        <DangerWarning show={showDangerWarning} />
+        
+        {/* Rastro al caer */}
+        <FallingTrail
+          x={trailPos.x}
+          y={trailPos.y}
+          active={trailActive}
+        />
+
+        {/* Menú de pausa */}
+        {isPaused && gameState === 'play' && (
+          <PauseMenu
+            score={score}
+            gameTime={Math.floor(gameTime)}
+            gameMode={gameMode}
+            onResume={() => setIsPaused(false)}
+            onRestart={handleRestart}
+            onMainMenu={handleMenu}
+          />
+        )}
+
+        {/* Pantalla de estadísticas */}
+        {showStats && (
+          <StatsScreen
+            profile={playerProfile}
+            stats={playerStats}
+            onClose={() => setShowStats(false)}
+          />
+        )}
+
+        {/* Setup de perfil */}
+        {showProfileSetup && (
+          <ProfileSetup
+            currentNickname={playerProfile.nickname}
+            currentAvatar={playerProfile.avatar}
+            onSave={(nickname, avatar) => {
+              setPlayerProfile(prev => ({
+                ...prev,
+                nickname,
+                avatar,
+              }));
+              setShowProfileSetup(false);
+            }}
+            onSkip={() => setShowProfileSetup(false)}
+          />
+        )}
       </div>
     </div>
   );
@@ -710,9 +1433,12 @@ export default function Game() {
 interface BottleProps {
   body: BottleBody;
   tierIndex: number;
+  isSelectable?: boolean;
+  isSelected?: boolean;
+  onSelect?: () => void;
 }
 
-const BottleComponent = ({ body, tierIndex }: BottleProps) => {
+const BottleComponent = ({ body, tierIndex, isSelectable, isSelected, onSelect }: BottleProps) => {
   const { position } = body;
   const tier = TIERS[tierIndex];
   const [scale, setScale] = useState(0);
@@ -724,7 +1450,8 @@ const BottleComponent = ({ body, tierIndex }: BottleProps) => {
 
   return (
     <div
-      className="bottle"
+      className={`bottle ${isSelectable ? 'selectable' : ''} ${isSelected ? 'selected' : ''}`}
+      onClick={onSelect}
       style={{
         left: position.x - tier.dw / 2,
         top: position.y - tier.dh / 2,
@@ -732,9 +1459,63 @@ const BottleComponent = ({ body, tierIndex }: BottleProps) => {
         height: tier.dh,
         transform: `scale(${scale}) rotate(180deg)`,
         transition: 'transform 0.3s ease',
+        cursor: isSelectable ? 'pointer' : 'default',
+        filter: isSelectable ? 'brightness(1.2)' : 'none',
+        boxShadow: isSelected ? '0 0 20px #FF6B00' : 'none',
       }}
     >
       <img src={tier.img} alt={tier.name} style={{ transform: 'rotate(180deg)' }} />
+      {isSelectable && <div className="bottle-selector-ring" />}
+    </div>
+  );
+};
+
+// Componente de confeti para celebrar nuevo record
+const ConfettiEffect = () => {
+  const [pieces, setPieces] = useState<Array<{
+    id: number;
+    x: number;
+    y: number;
+    color: string;
+    rotation: number;
+    scale: number;
+    delay: number;
+  }>>([]);
+
+  useEffect(() => {
+    const colors = ['#FF6B00', '#FFD700', '#FF8C33', '#CC5500', '#FF6B35', '#FFA500'];
+    const newPieces = [];
+    
+    for (let i = 0; i < 50; i++) {
+      newPieces.push({
+        id: i,
+        x: Math.random() * 100,
+        y: -10 - Math.random() * 20,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        rotation: Math.random() * 360,
+        scale: 0.5 + Math.random() * 0.5,
+        delay: Math.random() * 2,
+      });
+    }
+    
+    setPieces(newPieces);
+  }, []);
+
+  return (
+    <div className="confetti-container">
+      {pieces.map((piece) => (
+        <div
+          key={piece.id}
+          className="confetti-piece"
+          style={{
+            left: `${piece.x}%`,
+            top: `${piece.y}%`,
+            backgroundColor: piece.color,
+            transform: `rotate(${piece.rotation}deg) scale(${piece.scale})`,
+            animationDelay: `${piece.delay}s`,
+          }}
+        />
+      ))}
     </div>
   );
 };

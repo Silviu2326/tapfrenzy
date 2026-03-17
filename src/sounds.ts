@@ -140,17 +140,51 @@ export const playStart = (): void => {
   setTimeout(() => playTone(659, 0.2, 'sine', 0.25), 200);
 };
 
-// Vibration API (alternativa a Haptics de Expo)
+// ==========================================
+// SISTEMA DE HAPTICS/VIBRACIÓN MOBILE
+// ==========================================
+
+// Verificar soporte de vibración
+export const supportsVibration = (): boolean => {
+  return 'vibrate' in navigator;
+};
+
+// Vibración personalizada con patrón
 export const vibrate = (pattern: number | number[]): void => {
-  if (navigator.vibrate) {
+  if (supportsVibration()) {
     navigator.vibrate(pattern);
   }
 };
 
-export const vibrateLight = (): void => vibrate(10);
-export const vibrateMedium = (): void => vibrate(20);
-export const vibrateHeavy = (): void => vibrate([30, 50, 30]);
-export const vibrateError = (): void => vibrate([50, 100, 50, 100, 50]);
+// Vibraciones específicas por acción (optimizadas para móvil)
+export const vibrateLight = (): void => vibrate(20);         // Drop botella
+export const vibrateMedium = (): void => vibrate(40);        // Fusión simple
+export const vibrateHeavy = (): void => vibrate([50, 30, 50]); // Fusión alta
+export const vibrateError = (): void => vibrate([80, 100, 80]); // Game over
+
+// Nuevas vibraciones para mecánicas mobile
+export const vibratePowerUp = (): void => vibrate([30, 50, 30, 50, 30]); // Usar poder
+export const vibrateSelection = (): void => vibrate(15);     // Seleccionar objetivo
+export const vibrateSuccess = (): void => vibrate([40, 60, 100]); // Éxito (combo, record)
+export const vibrateCombo = (combo: number): void => {
+  // Vibración más intensa según combo
+  const intensity = Math.min(combo * 15, 100);
+  vibrate([intensity, 30, intensity]);
+};
+export const vibrateTierHigh = (): void => vibrate([60, 40, 80, 40, 100]); // Tier 6+
+export const vibrateDanger = (): void => vibrate([100, 100, 100]); // Peligro
+export const vibratePulse = (): void => vibrate([50, 200, 50]); // Heartbeat
+export const vibrateCelebrate = (): void => {
+  // Celebración compleja para logros
+  vibrate([50, 50, 50, 50, 100, 50, 50, 50, 50, 200]);
+};
+
+// Cancelar vibración
+export const stopVibration = (): void => {
+  if (supportsVibration()) {
+    navigator.vibrate(0);
+  }
+};
 
 // ==========================================
 // MÚSICA DE FONDO
@@ -201,3 +235,29 @@ export const stopBackgroundMusic = (): void => {
     bgMusic = null;
   }
 };
+
+// ==========================================
+// VISIBILITY API - Pausar música cuando la pestaña no está visible
+// ==========================================
+
+let wasPlayingBeforeHidden = false;
+
+// Escuchar cambios de visibilidad del documento
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      // La pestaña se ocultó - pausar música si estaba sonando
+      if (bgMusic && !bgMusic.paused) {
+        wasPlayingBeforeHidden = true;
+        pauseBackgroundMusic();
+      } else {
+        wasPlayingBeforeHidden = false;
+      }
+    } else {
+      // La pestaña se volvió visible - reanudar música si estaba sonando
+      if (wasPlayingBeforeHidden && soundEnabled) {
+        resumeBackgroundMusic();
+      }
+    }
+  });
+}

@@ -1,21 +1,15 @@
-import { useNavigate } from 'react-router-dom';
 import { IntroVideo } from '../IntroVideo';
 
-export default function Intro() {
-  const navigate = useNavigate();
+interface IntroProps {
+  onComplete: () => void;
+  onSkip: () => void;
+}
 
-  const handleComplete = () => {
-    navigate('/menu');
-  };
-
-  const handleSkip = () => {
-    navigate('/menu');
-  };
-
+export default function Intro({ onComplete, onSkip }: IntroProps) {
   return (
     <IntroVideo 
-      onComplete={handleComplete}
-      onSkip={handleSkip}
+      onComplete={onComplete}
+      onSkip={onSkip}
     />
   );
 }
