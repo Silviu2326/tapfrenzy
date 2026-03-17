@@ -49,7 +49,7 @@ export default function Home({ onStartGame }: HomeProps) {
             {bottleNames.map((name, i) => {
               const img = BOTTLE_IMAGES[name as keyof typeof BOTTLE_IMAGES];
               const offset = Math.sin(time + i * 0.8) * 8 + Math.abs(i - 2.5) * 4;
-              const rotation = (i - 2.5) * 3.5;
+              const rotation = (i - 2.5) * 3.5 + 180;
               
               return (
                 <div

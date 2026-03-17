@@ -12,81 +12,103 @@ interface IntroVideoProps {
 
 export const IntroVideo = ({ onComplete, onSkip }: IntroVideoProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [loadProgress, setLoadProgress] = useState(0);
-  const [showStartButton, setShowStartButton] = useState(false);
+  const [isReady, setIsReady] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
   const hasStarted = useRef(false);
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || hasStarted.current) return;
+    if (!video) {
+      console.log('[IntroVideo] No video ref yet');
+      return;
+    }
+
+    console.log('[IntroVideo] Setting up video, readyState:', video.readyState);
 
     const handleEnded = () => {
+      console.log('[IntroVideo] Video ended');
       onComplete();
     };
 
-    const handleProgress = () => {
-      if (video.buffered.length > 0 && video.duration > 0) {
-        const bufferedEnd = video.buffered.end(video.buffered.length - 1);
-        const progress = (bufferedEnd / video.duration) * 100;
-        setLoadProgress(progress);
-      }
-    };
-
     const handleCanPlay = () => {
-      console.log('[IntroVideo] Video ready');
-      setIsLoaded(true);
-      setShowStartButton(true);
+      console.log('[IntroVideo] Can play event');
+      setIsReady(true);
     };
 
-    const handleError = () => {
-      console.error('[IntroVideo] Video error');
-      onSkip();
+    const handleLoadedData = () => {
+      console.log('[IntroVideo] Loaded data event');
+      setIsReady(true);
     };
 
-    // Eventos
+    const handleError = (e: Event) => {
+      console.error('[IntroVideo] Error:', video.error, e);
+      // Si hay error, permitir saltar
+      setIsReady(true);
+    };
+
+    // Event listeners
     video.addEventListener('ended', handleEnded);
     video.addEventListener('canplay', handleCanPlay);
     video.addEventListener('canplaythrough', handleCanPlay);
-    video.addEventListener('progress', handleProgress);
+    video.addEventListener('loadeddata', handleLoadedData);
     video.addEventListener('error', handleError);
 
-    // Precargar video
-    video.load();
+    // Check if already ready
+    if (video.readyState >= 3) {
+      console.log('[IntroVideo] Already ready, showing button');
+      setIsReady(true);
+    } else {
+      // Force load
+      video.load();
+    }
+
+    // Safety timeout - show button after 3 seconds regardless
+    const timeout = setTimeout(() => {
+      console.log('[IntroVideo] Timeout reached');
+      setIsReady(true);
+    }, 3000);
 
     return () => {
+      clearTimeout(timeout);
       video.removeEventListener('ended', handleEnded);
       video.removeEventListener('canplay', handleCanPlay);
       video.removeEventListener('canplaythrough', handleCanPlay);
-      video.removeEventListener('progress', handleProgress);
+      video.removeEventListener('loadeddata', handleLoadedData);
       video.removeEventListener('error', handleError);
     };
-  }, [onComplete, onSkip]);
+  }, []);
 
   const handleStart = async () => {
     if (hasStarted.current) return;
     hasStarted.current = true;
 
     const video = videoRef.current;
-    if (!video) return;
+    if (!video) {
+      onSkip();
+      return;
+    }
 
-    setShowStartButton(false);
+    setIsPlaying(true);
 
     try {
-      // Ahora podemos reproducir CON sonido porque hubo interacción
       video.muted = false;
+      video.currentTime = 0;
       await video.play();
-      console.log('[IntroVideo] Playing with sound!');
-    } catch (error) {
-      console.error('[IntroVideo] Failed to play:', error);
+      console.log('[IntroVideo] Playing');
+    } catch (err) {
+      console.error('[IntroVideo] Play error:', err);
       onSkip();
     }
   };
 
+  const handleSkip = () => {
+    onSkip();
+  };
+
   return (
     <div className="intro-container">
-      {/* Pantalla de carga */}
-      {!isLoaded && (
+      {/* Loading screen */}
+      {!isReady && (
         <div className="loading-screen">
           <div className="loading-spinner">
             <div className="spinner-ring"></div>
@@ -94,13 +116,25 @@ export const IntroVideo = ({ onComplete, onSkip }: IntroVideoProps) => {
             <div className="spinner-ring"></div>
           </div>
           <span className="loading-text">CARGANDO...</span>
-          <div className="loading-progress">{Math.round(loadProgress)}%</div>
           <div className="loading-beer">🍺</div>
+          <button 
+            className="intro-skip-button"
+            onClick={handleSkip}
+            style={{ 
+              borderColor: THEME_COLOR,
+              marginTop: '20px',
+              position: 'relative',
+              top: 'auto',
+              right: 'auto',
+            }}
+          >
+            Saltar ⏭
+          </button>
         </div>
       )}
 
-      {/* Botón de inicio - REQUIERE INTERACCIÓN PARA SONIDO */}
-      {showStartButton && (
+      {/* Start button */}
+      {isReady && !isPlaying && (
         <div className="start-screen" onClick={handleStart}>
           <div className="start-button-circle">
             <span className="start-icon">▶</span>
@@ -109,31 +143,33 @@ export const IntroVideo = ({ onComplete, onSkip }: IntroVideoProps) => {
         </div>
       )}
       
-      {/* Video a pantalla completa */}
+      {/* Video */}
       <video
         ref={videoRef}
         className="intro-video"
         src={INTRO_VIDEO}
         preload="auto"
         playsInline
+        muted
         style={{ 
-          opacity: isLoaded && !showStartButton ? 1 : 0, 
-          transition: 'opacity 0.5s ease'
+          opacity: isPlaying ? 1 : 0,
+          transition: 'opacity 0.3s ease'
         }}
       />
       
-      {/* Skip button - solo visible cuando el video está reproduciéndose */}
-      <button 
-        className="intro-skip-button"
-        onClick={onSkip}
-        style={{ 
-          borderColor: THEME_COLOR,
-          opacity: isLoaded && !showStartButton ? 1 : 0,
-          transition: 'opacity 0.3s',
-        }}
-      >
-        Saltar ⏭
-      </button>
+      {/* Skip button during playback */}
+      {isPlaying && (
+        <button 
+          className="intro-skip-button"
+          onClick={handleSkip}
+          style={{ 
+            borderColor: THEME_COLOR,
+            opacity: 1,
+          }}
+        >
+          Saltar ⏭
+        </button>
+      )}
     </div>
   );
 };
