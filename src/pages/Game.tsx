@@ -117,7 +117,7 @@ export default function Game({ onBackToMenu, userData }: GameProps) {
   const [gameState, setGameState] = useState<'play' | 'over'>('play');
   const [bottles, setBottles] = useState<BottleBody[]>([]);
   const [score, setScore] = useState(0);
-  const [dScore, setDScore] = useState(0);
+
   const [bestScore, setBestScore] = useState(0);
   const [currentTier, setCurrentTier] = useState(0);
   const [nextTier, setNextTier] = useState(0);
@@ -400,8 +400,6 @@ export default function Game({ onBackToMenu, userData }: GameProps) {
         }
       }
       
-      setDScore(prev => prev + (score - prev) * 0.15);
-      
       // Timer para modo rápido (respeta el timeScale del slowmo)
       if (gameModeRef.current === 'quick' && isQuickModeActiveRef.current) {
         const timeScale = slowMoActive ? 0.3 : 1;
@@ -581,7 +579,6 @@ export default function Game({ onBackToMenu, userData }: GameProps) {
       clearWorld(worldRef.current);
     }
     setScore(0);
-    setDScore(0);
     setCombo(0);
     setComboTime(0);
     setMaxTier(0);
@@ -616,7 +613,6 @@ export default function Game({ onBackToMenu, userData }: GameProps) {
       clearWorld(worldRef.current);
     }
     setScore(0);
-    setDScore(0);
     setCombo(0);
     setComboTime(0);
     setMaxTier(0);
@@ -1088,7 +1084,6 @@ export default function Game({ onBackToMenu, userData }: GameProps) {
     };
   };
 
-  const displayScore = Math.floor(dScore || score);
   const tier = TIERS[maxTier] || TIERS[0];
   const topTiers = [];
   for (let i = Math.max(0, maxTier - 2); i <= maxTier; i++) {
@@ -1274,23 +1269,6 @@ export default function Game({ onBackToMenu, userData }: GameProps) {
             <span className="next-label">NEXT</span>
             <img src={TIERS[nextTier].img} alt={TIERS[nextTier].name} style={{ transform: 'rotate(180deg)' }} />
             <span className="next-name">{TIERS[nextTier].name}</span>
-          </div>
-          
-          <div className="score-display">
-            <div className="score-coin">
-              <div className="coin-inner">
-                <span>$</span>
-              </div>
-            </div>
-            <span className="score-value">{displayScore.toLocaleString()}</span>
-            {combo > 1 && comboTime > 0 && (
-              <span 
-                className="combo-text"
-                style={{ opacity: Math.min(1, comboTime / 500) }}
-              >
-                x{combo} COMBO!
-              </span>
-            )}
           </div>
           
           {/* Timer para modo rápido */}

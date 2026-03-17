@@ -10,6 +10,8 @@
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
 }
 
 html, body, #root {
@@ -22,6 +24,25 @@ html, body, #root {
 body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   touch-action: none; /* Prevenir scroll en móviles */
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Prevenir highlight azul en todos los elementos interactivos */
+button, a, [role="button"], input, textarea, select {
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  touch-action: manipulation;
+}
+
+button:focus, a:focus, [role="button"]:focus {
+  outline: none !important;
+}
+
+/* Prevenir selección de texto en móviles */
+*::selection {
+  background: transparent;
 }
 
 /* Wrapper principal - pantalla completa */
@@ -542,6 +563,11 @@ body {
   z-index: 50;
   padding: 20px;
   overflow-y: auto;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
 }
 
 .game-title {
@@ -665,11 +691,21 @@ body {
   box-shadow: 0 0 20px rgba(255, 107, 0, 0.5);
   transition: transform 0.2s, box-shadow 0.2s;
   min-width: 200px;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  outline: none;
 }
 
 .play-button:hover {
   transform: scale(1.05);
   box-shadow: 0 0 30px rgba(255, 107, 0, 0.7);
+}
+
+.play-button:focus {
+  outline: none;
 }
 
 .ranking-button {
@@ -685,12 +721,22 @@ body {
   transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
   min-width: 200px;
   margin-top: 12px;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  outline: none;
 }
 
 .ranking-button:hover {
   transform: scale(1.05);
   box-shadow: 0 0 25px rgba(255, 107, 0, 0.5);
   background: rgba(255, 107, 0, 0.2);
+}
+
+.ranking-button:focus {
+  outline: none;
 }
 
 .candy-crush-button {
