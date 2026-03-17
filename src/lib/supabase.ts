@@ -147,7 +147,7 @@ export async function getUserPosition(
     if (error) throw error;
     if (!data) return { position: null, entry: null };
 
-    const position = data.findIndex(entry => entry.user_id === userId);
+    const position = data.findIndex((entry: RankingEntry) => entry.user_id === userId);
     
     if (position === -1) {
       return { position: null, entry: null };
@@ -221,19 +221,19 @@ export async function getRankingStats(
   weekId: string
 ): Promise<Record<GameMode, number>> {
   try {
+    // Obtener todos los registros de la semana y contar manualmente por modo
     const { data, error } = await supabase
       .from('rankings')
-      .select('game_mode, count')
-      .eq('week_id', weekId)
-      .group('game_mode');
+      .select('game_mode')
+      .eq('week_id', weekId);
 
     if (error || !data) {
       return { classic: 0, quick: 0, zen: 0 };
     }
 
     const stats: Record<GameMode, number> = { classic: 0, quick: 0, zen: 0 };
-    data.forEach((entry: { game_mode: GameMode; count: number }) => {
-      stats[entry.game_mode] = entry.count;
+    data.forEach((entry: { game_mode: GameMode }) => {
+      stats[entry.game_mode] = (stats[entry.game_mode] || 0) + 1;
     });
 
     return stats;

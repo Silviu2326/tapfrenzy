@@ -60,7 +60,7 @@ export default function WeeklyRanking({
 
       // Si hay usuario logueado y puntuación actual, obtener su posición
       if (userData?.userId && currentScore && currentScore > 0 && selectedMode === currentGameMode) {
-        const { position, entry } = await getUserPosition(userData.userId, currentWeekId, selectedMode);
+        const { position } = await getUserPosition(userData.userId, currentWeekId, selectedMode);
         
         if (position) {
           setCurrentUserPosition(position);
