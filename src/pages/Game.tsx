@@ -61,6 +61,7 @@ import ProfileSetup from '../components/ProfileSetup';
 import { PowerType, PowerState, INITIAL_POWERS, canUsePower } from '../types/powers';
 import { GameMode, formatTime, calculateTimeBonus } from '../types/gameModes';
 import { PlayerProfile, PlayerStats, calculateLevel } from '../types/player';
+import { getCurrentWeekId } from '../types/ranking';
 import { particlePool, autoAdjustQuality } from '../systems/ParticleSystem';
 import { UserData } from '../lib/supabase';
 
@@ -646,7 +647,57 @@ export default function Game({ onBackToMenu, userData }: GameProps) {
   const handleMenu = () => {
     onBackToMenu();
   };
-  
+
+  const handleSaveAndExit = async () => {
+    // Guardar estadísticas de la partida actual
+    if (userData?.isLoggedIn && score > 0) {
+      try {
+        const { saveScore } = await import('../lib/supabase');
+        await saveScore(userData, score, maxTier, getCurrentWeekId(), gameMode);
+        console.log('Partida guardada exitosamente');
+      } catch (error) {
+        console.error('Error al guardar la partida:', error);
+      }
+    }
+
+    // Actualizar estadísticas del jugador
+    setPlayerStats(prev => {
+      const now = Date.now();
+      const isNewDay = now - prev.lastPlayed > 24 * 60 * 60 * 1000;
+      const newStreak = isNewDay ? prev.currentStreak + 1 : prev.currentStreak;
+
+      return {
+        ...prev,
+        totalGames: prev.totalGames + 1,
+        totalScore: prev.totalScore + score,
+        bestScore: Math.max(prev.bestScore, score),
+        barrelsCreated: prev.barrelsCreated + (maxTier >= 8 ? 1 : 0),
+        totalMerges: prev.totalMerges + merges,
+        maxCombo: Math.max(prev.maxCombo, sessionMaxCombo),
+        timePlayed: prev.timePlayed + Math.floor(gameTime),
+        lastPlayed: now,
+        gamesToday: isNewDay ? 1 : prev.gamesToday + 1,
+        currentStreak: newStreak,
+      };
+    });
+
+    // Actualizar XP del jugador
+    const xpGained = Math.floor(score / 100) + (merges * 10) + (sessionMaxCombo * 50);
+    setPlayerProfile(prev => {
+      const newXP = prev.xp + xpGained;
+      const newLevel = calculateLevel(newXP);
+      return {
+        ...prev,
+        xp: newXP,
+        level: newLevel.level,
+        title: newLevel.title,
+      };
+    });
+
+    // Volver al menú principal
+    onBackToMenu();
+  };
+
   // Flag para indicar si la próxima botella es una bomba
   const [isNextBomb, setIsNextBomb] = useState(false);
 
@@ -1101,7 +1152,7 @@ export default function Game({ onBackToMenu, userData }: GameProps) {
           }}
         >
           {/* Líneas de peligro - ocultas en modo Zen */}
-          {gameModeRef.current !== 'zen' && (
+          {gameMode !== 'zen' && (
             <>
               <div 
                 className="game-over-line"
@@ -1413,6 +1464,8 @@ export default function Game({ onBackToMenu, userData }: GameProps) {
             onResume={() => setIsPaused(false)}
             onRestart={handleRestart}
             onMainMenu={handleMenu}
+            onSaveAndExit={handleSaveAndExit}
+            userData={userData}
           />
         )}
 

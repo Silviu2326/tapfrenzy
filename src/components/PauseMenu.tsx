@@ -7,6 +7,8 @@ interface PauseMenuProps {
   onResume: () => void;
   onRestart: () => void;
   onMainMenu: () => void;
+  onSaveAndExit?: () => void;
+  userData?: { isLoggedIn: boolean };
 }
 
 export default function PauseMenu({
@@ -16,6 +18,8 @@ export default function PauseMenu({
   onResume,
   onRestart,
   onMainMenu,
+  onSaveAndExit,
+  userData,
 }: PauseMenuProps) {
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -68,6 +72,13 @@ export default function PauseMenu({
             <span className="btn-icon">🔄</span>
             <span className="btn-text">Reiniciar</span>
           </button>
+
+          {userData?.isLoggedIn && onSaveAndExit && (
+            <button className="pause-btn save-exit" onClick={onSaveAndExit}>
+              <span className="btn-icon">💾</span>
+              <span className="btn-text">Guardar y Salir</span>
+            </button>
+          )}
 
           <button className="pause-btn menu" onClick={onMainMenu}>
             <span className="btn-icon">🏠</span>
