@@ -1,61 +1,132 @@
 import { useState, useEffect } from 'react';
-import { RankedPlayer, getCurrentWeekId } from '../types/ranking';
+import { getCurrentWeekId, RankedPlayer } from '../types/ranking';
+import { 
+  getWeeklyRanking, 
+  getUserPosition, 
+  RankingEntry, 
+  UserData, 
+  GameMode,
+  getGameModeLabel,
+  getGameModeIcon
+} from '../lib/supabase';
 
 interface WeeklyRankingProps {
   currentScore?: number;
   onClose: () => void;
   onPlayAgain?: () => void;
+  userData?: UserData;
+  maxTier?: number;
+  currentGameMode?: GameMode;
 }
-
-// Datos de ejemplo para mostrar la estructura
-const MOCK_PLAYERS: RankedPlayer[] = [
-  { userId: '1', nickname: 'DJKeyla', score: 12540, timestamp: Date.now() },
-  { userId: '2', nickname: 'FunkMaster', score: 11800, timestamp: Date.now() },
-  { userId: '3', nickname: 'CatiraKing', score: 11200, timestamp: Date.now() },
-  { userId: '4', nickname: 'BeerLover', score: 9850, timestamp: Date.now() },
-  { userId: '5', nickname: 'MedusaPro', score: 9200, timestamp: Date.now() },
-  { userId: '6', nickname: 'TapMaster', score: 8750, timestamp: Date.now() },
-  { userId: '7', nickname: 'CoolCat99', score: 8100, timestamp: Date.now() },
-  { userId: '8', nickname: 'GatoLoco', score: 7600, timestamp: Date.now() },
-  { userId: '9', nickname: 'CervezaReal', score: 7200, timestamp: Date.now() },
-  { userId: '10', nickname: 'FrenzyKing', score: 6800, timestamp: Date.now() },
-];
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
-export default function WeeklyRanking({ currentScore, onClose, onPlayAgain }: WeeklyRankingProps) {
-  const [players, setPlayers] = useState<RankedPlayer[]>(MOCK_PLAYERS);
+const MODES: GameMode[] = ['classic', 'quick', 'zen'];
+
+export default function WeeklyRanking({ 
+  currentScore, 
+  onClose, 
+  onPlayAgain,
+  userData,
+  maxTier = 0,
+  currentGameMode = 'classic'
+}: WeeklyRankingProps) {
+  const [players, setPlayers] = useState<RankedPlayer[]>([]);
   const [currentUserPosition, setCurrentUserPosition] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedMode, setSelectedMode] = useState<GameMode>(currentGameMode);
   const currentWeekId = getCurrentWeekId();
 
   useEffect(() => {
-    // Ordenar por puntuación
-    const sorted = [...MOCK_PLAYERS].sort((a, b) => b.score - a.score);
+    loadRanking();
+  }, [selectedMode]);
+
+  const loadRanking = async () => {
+    setIsLoading(true);
+    setError(null);
     
-    // Si hay puntuación actual, insertar en la posición correcta
-    if (currentScore && currentScore > 0) {
-      const userPlayer: RankedPlayer = {
-        userId: 'current-user',
-        nickname: 'Tú',
-        score: currentScore,
-        timestamp: Date.now(),
-      };
+    try {
+      // Obtener ranking de Supabase para el modo seleccionado
+      const rankingData = await getWeeklyRanking(currentWeekId, selectedMode, 10);
       
-      // Encontrar posición
-      let position = sorted.findIndex(p => p.score < currentScore);
-      if (position === -1) position = sorted.length;
+      // Convertir a formato RankedPlayer
+      let rankedPlayers: RankedPlayer[] = rankingData.map((entry: RankingEntry) => ({
+        userId: entry.user_id,
+        nickname: entry.nickname,
+        score: entry.score,
+        timestamp: new Date(entry.created_at || Date.now()).getTime(),
+      }));
+
+      // Si hay usuario logueado y puntuación actual, obtener su posición
+      if (userData?.userId && currentScore && currentScore > 0 && selectedMode === currentGameMode) {
+        const { position, entry } = await getUserPosition(userData.userId, currentWeekId, selectedMode);
+        
+        if (position) {
+          setCurrentUserPosition(position);
+        }
+
+        // Insertar usuario actual si no está en el top 10 o tiene mejor puntuación
+        const existingIndex = rankedPlayers.findIndex(p => p.userId === userData.userId);
+        
+        if (existingIndex >= 0) {
+          // Actualizar puntuación si es mejor
+          if (currentScore > rankedPlayers[existingIndex].score) {
+            rankedPlayers[existingIndex].score = currentScore;
+            rankedPlayers[existingIndex].nickname = userData.name || 'Tú';
+          }
+        } else {
+          // Agregar usuario al ranking
+          const userPlayer: RankedPlayer = {
+            userId: userData.userId,
+            nickname: userData.name || 'Tú',
+            score: currentScore,
+            timestamp: Date.now(),
+          };
+          
+          rankedPlayers.push(userPlayer);
+        }
+        
+        // Reordenar
+        rankedPlayers.sort((a, b) => b.score - a.score);
+        
+        // Guardar en Supabase si hay usuario
+        if (userData.isLoggedIn) {
+          const { saveScore } = await import('../lib/supabase');
+          await saveScore(userData, currentScore, maxTier, currentWeekId, currentGameMode);
+        }
+      }
       
-      // Insertar usuario
-      sorted.splice(position, 0, userPlayer);
-      setCurrentUserPosition(position + 1);
+      setPlayers(rankedPlayers.slice(0, 10));
+    } catch (err) {
+      console.error('Error loading ranking:', err);
+      setError('Error al cargar el ranking');
+    } finally {
+      setIsLoading(false);
     }
-    
-    setPlayers(sorted.slice(0, 10));
-  }, [currentScore]);
+  };
 
   const formatScore = (score: number): string => {
     return score.toLocaleString('es-ES');
   };
+
+  const isCurrentUser = (player: RankedPlayer): boolean => {
+    if (!userData?.userId) return false;
+    return player.userId === userData.userId || player.nickname === (userData.name || 'Tú');
+  };
+
+  if (isLoading) {
+    return (
+      <div className="ranking-overlay">
+        <div className="ranking-card">
+          <div className="ranking-loading">
+            <div className="loading-spinner"></div>
+            <p>Cargando ranking...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="ranking-overlay">
@@ -66,28 +137,56 @@ export default function WeeklyRanking({ currentScore, onClose, onPlayAgain }: We
           <span className="ranking-week">{currentWeekId}</span>
         </div>
 
+        {/* Tabs de modo de juego */}
+        <div className="ranking-mode-tabs">
+          {MODES.map((mode) => (
+            <button
+              key={mode}
+              className={`mode-tab ${selectedMode === mode ? 'active' : ''} ${mode === currentGameMode ? 'current' : ''}`}
+              onClick={() => setSelectedMode(mode)}
+            >
+              <span className="mode-icon">{getGameModeIcon(mode)}</span>
+              <span className="mode-label">{getGameModeLabel(mode)}</span>
+              {mode === currentGameMode && <span className="mode-current-badge">Actual</span>}
+            </button>
+          ))}
+        </div>
+
+        {error && (
+          <div className="ranking-error">
+            {error}
+          </div>
+        )}
+
         {/* Lista de rankings */}
         <div className="ranking-list">
-          {players.map((player, index) => {
-            const isCurrentUser = player.userId === 'current-user';
-            const position = index + 1;
-            const medal = position <= 3 ? MEDALS[position - 1] : `${position}.`;
-            
-            return (
-              <div 
-                key={player.userId} 
-                className={`ranking-item ${isCurrentUser ? 'current-user' : ''} ${position <= 3 ? 'top-three' : ''}`}
-              >
-                <span className="ranking-position">{medal}</span>
-                <span className="ranking-nickname">{player.nickname}</span>
-                <span className="ranking-score">{formatScore(player.score)} pts</span>
-              </div>
-            );
-          })}
+          {players.length === 0 ? (
+            <div className="ranking-empty">
+              <p>🎮 ¡Sé el primero en jugar {getGameModeLabel(selectedMode)}!</p>
+              <p className="ranking-empty-sub">Aún no hay puntuaciones esta semana en este modo</p>
+            </div>
+          ) : (
+            players.map((player, index) => {
+              const isUser = isCurrentUser(player);
+              const position = index + 1;
+              const medal = position <= 3 ? MEDALS[position - 1] : `${position}.`;
+              
+              return (
+                <div 
+                  key={player.userId} 
+                  className={`ranking-item ${isUser ? 'current-user' : ''} ${position <= 3 ? 'top-three' : ''}`}
+                >
+                  <span className="ranking-position">{medal}</span>
+                  <span className="ranking-nickname">{player.nickname}</span>
+                  <span className="ranking-score">{formatScore(player.score)} pts</span>
+                </div>
+              );
+            })
+          )}
         </div>
 
         {/* Posición del usuario */}
-        {currentUserPosition && currentUserPosition > 10 && (
+        {currentUserPosition && currentUserPosition > 10 && selectedMode === currentGameMode && (
           <div className="ranking-user-position">
             <span className="user-position-text">Tu posición: #{currentUserPosition}</span>
             {currentScore && (
@@ -100,6 +199,11 @@ export default function WeeklyRanking({ currentScore, onClose, onPlayAgain }: We
         <div className="ranking-info">
           <p>🎁 Top 3 ganan premios semanales</p>
           <p>🔄 Reset cada lunes a las 00:00</p>
+          {!userData?.isLoggedIn && (
+            <p className="ranking-login-hint">
+              🔐 Inicia sesión para guardar tu puntuación
+            </p>
+          )}
         </div>
 
         {/* Botones */}

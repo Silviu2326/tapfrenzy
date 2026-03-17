@@ -62,6 +62,7 @@ import { PowerType, PowerState, INITIAL_POWERS, canUsePower } from '../types/pow
 import { GameMode, formatTime, calculateTimeBonus } from '../types/gameModes';
 import { PlayerProfile, PlayerStats, calculateLevel } from '../types/player';
 import { particlePool, autoAdjustQuality } from '../systems/ParticleSystem';
+import { UserData } from '../lib/supabase';
 
 interface Particle {
   id: number;
@@ -90,9 +91,10 @@ interface FloatingText {
 
 interface GameProps {
   onBackToMenu: () => void;
+  userData?: UserData;
 }
 
-export default function Game({ onBackToMenu }: GameProps) {
+export default function Game({ onBackToMenu, userData }: GameProps) {
   
   // Referencias
   const engineRef = useRef<Matter.Engine | null>(null);
@@ -261,6 +263,17 @@ export default function Game({ onBackToMenu }: GameProps) {
       stopBackgroundMusic();
     };
   }, []);
+
+  // Actualizar perfil cuando llegan datos del usuario
+  useEffect(() => {
+    if (userData?.userId) {
+      setPlayerProfile(prev => ({
+        ...prev,
+        userId: userData.userId,
+        nickname: userData.name || prev.nickname,
+      }));
+    }
+  }, [userData]);
 
   // Callback de merge
   const handleMerge = useCallback((mergeData: MergeData) => {
@@ -1332,6 +1345,9 @@ export default function Game({ onBackToMenu }: GameProps) {
               currentScore={score}
               onClose={() => setShowRanking(false)}
               onPlayAgain={handleRestart}
+              userData={userData}
+              maxTier={maxTier}
+              currentGameMode={gameMode}
             />
           )}
         </div>
